@@ -1,0 +1,6 @@
+name: nakama
+shutdown_grace_sec: 5
+logger:
+  level: "DEBUG"
+runtime:
+  js_entrypoint: "build/index.js"
