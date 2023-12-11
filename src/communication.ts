@@ -1,28 +1,25 @@
-function receivePlayerMessage(state: GameState, logger: nkruntime.Logger, nk: nkruntime.Nakama, dispatcher: nkruntime.MatchDispatcher, msg: nkruntime.MatchMessage) {
+function receivePlayerMessage(state: GameState, senderId: string, opCode: number, msg: string, dispatcher: MatchMessageDispatcher, logger: nkruntime.Logger) {
 	let players = Match.getActivePlayers(state);
-	let senderId = getPlayerId(msg.sender);
 	let isSenderTurnPlayer = Match.isPlayerTurn(state, senderId);
-	let msgDataStr = nk.binaryToString(msg.data);
 	let msgDataObj: any
 	try {
-		msgDataObj = JSON.parse(msgDataStr);
+		msgDataObj = JSON.parse(msg);
 	}
 	catch (err) {
-		logger.info(`Error parsing data string from message: ${msgDataStr}`)
+		logger.info(`Error parsing data string from message: ${msg}`)
 		msgDataObj = {}
 	}
-	switch (msg.opCode) {
+	switch (opCode) {
 		// pass messages to opponent
-		case MATCH_OPCODE_MSG:
+		case PlayerActionCode.MESSAGE:
 			// Send user message to opponent
 			let senderOpponent = Match.getOpponent(state, senderId);
-			let senderOpponentPresence = Match.getPresence(state, senderOpponent);
-			dispatcher.broadcastMessage(MATCH_OPCODE_MSG, msg.data, senderOpponentPresence && [senderOpponentPresence], msg.sender, true);
+			dispatcher.dispatch(MATCH_OPCODE_MSG, msg, [senderOpponent], senderId, true);
 
 			break;
-		case MATCH_OPCODE_END_TURN:
+		case PlayerActionCode.END_TURN:
 			if (!isSenderTurnPlayer) {
-				dispatcher.broadcastMessage(MATCH_OPCODE_MSG, "It's not your turn yet!", [msg.sender], null, true);
+				dispatcher.dispatch(MATCH_OPCODE_MSG, "It's not your turn yet!", [senderId], null, true);
 				break;
 			}
 			// end turn
@@ -30,11 +27,12 @@ function receivePlayerMessage(state: GameState, logger: nkruntime.Logger, nk: nk
 			players.forEach(id => sendEventTurnChanged(state, dispatcher, id));
 
 			break;
-		case MATCH_OPCODE_PLAY_INGREDIENT:
+		case PlayerActionCode.ATTACK:
 			if (!isSenderTurnPlayer) {
-				dispatcher.broadcastMessage(MATCH_OPCODE_MSG, "It's not your turn yet!", [msg.sender], null, true);
+				dispatcher.dispatch(MATCH_OPCODE_MSG, "It's not your turn yet!", [senderId], null, true);
 				break;
 			}
+		
 			let opponent = Match.getOpponent(state, senderId);
 			let opponentOldHP = Match.getHP(state, opponent);
 			let damage = (msgDataObj && msgDataObj.amount) || 1;
@@ -44,7 +42,7 @@ function receivePlayerMessage(state: GameState, logger: nkruntime.Logger, nk: nk
 
 			break;
 		default:
-			dispatcher.broadcastMessage(MATCH_OPCODE_MSG, "Unknown action opcode", [msg.sender], null, true);
+			dispatcher.dispatch(MatchEventCode.MESSAGE, "Unknown action opcode", [senderId], null, true);
 	}
 }
 
@@ -62,7 +60,7 @@ function serializePublicCardData(card: Card): Object {
 	};
 }
 
-function sendCurrentGameState(state: GameState, dispatcher: nkruntime.MatchDispatcher, playerId: string) {
+function sendCurrentGameState(state: GameState, dispatcher: MatchMessageDispatcher, playerId: string) {
 	let opponent = Match.getOpponent(state, playerId);
 	let gameBeginMsgData = {
 		turnCount: state.turnCount,
@@ -78,18 +76,18 @@ function sendCurrentGameState(state: GameState, dispatcher: nkruntime.MatchDispa
 			mainDeck: Match.getCards(state, CardLocation.MAIN_DECK, opponent).map(serializePrivateCardData)
 		}
 	};
-	dispatcher.broadcastMessage(MATCH_OPCODE_MSG, JSON.stringify(gameBeginMsgData), [Match.getPresence(state, playerId)], null, true);
+	dispatcher.dispatch(MATCH_OPCODE_MSG, JSON.stringify(gameBeginMsgData), [playerId], null, true);
 }
 
-function sendEventTurnChanged(state: GameState, dispatcher: nkruntime.MatchDispatcher, playerId: string) {
+function sendEventTurnChanged(state: GameState, dispatcher: MatchMessageDispatcher, playerId: string) {
 	let turnEndMsgData = {
 		turnCount: state.turnCount,
 		isYourTurn: Match.isPlayerTurn(state, playerId)
 	};
-	dispatcher.broadcastMessage(MATCH_OPCODE_MSG, JSON.stringify(turnEndMsgData), [Match.getPresence(state, playerId)], null, true);
+	dispatcher.dispatch(MATCH_OPCODE_MSG, JSON.stringify(turnEndMsgData), [playerId], null, true);
 }
 
-function sendEventPlayerHPChanged(state: GameState, dispatcher: nkruntime.MatchDispatcher, playerId: string) {
+function sendEventPlayerHPChanged(state: GameState, dispatcher: MatchMessageDispatcher, playerId: string) {
 	let opponent = Match.getOpponent(state, playerId);
 	let playerHP = Match.getHP(state, playerId);
 	let opponentHP = Match.getHP(state, opponent);
@@ -97,12 +95,12 @@ function sendEventPlayerHPChanged(state: GameState, dispatcher: nkruntime.MatchD
 		you: playerHP,
 		opponent: opponentHP,
 	}
-	dispatcher.broadcastMessage(MATCH_OPCODE_MSG, JSON.stringify(hpUpdateMsgData), [Match.getPresence(state, playerId)], null, true);
+	dispatcher.dispatch(MATCH_OPCODE_MSG, JSON.stringify(hpUpdateMsgData), [playerId], null, true);
 }
 
-function sendEventGameEnded(state: GameState, dispatcher: nkruntime.MatchDispatcher, playerId: string) {
+function sendEventGameEnded(state: GameState, dispatcher: MatchMessageDispatcher, playerId: string) {
 	let gameEndMsgData = {
 		isWinner: state.winner && state.winner === playerId
 	};
-	dispatcher.broadcastMessage(MATCH_OPCODE_GAME_END, JSON.stringify(gameEndMsgData), [Match.getPresence(state, playerId)], null, true);
+	dispatcher.dispatch(MATCH_OPCODE_GAME_END, JSON.stringify(gameEndMsgData), [playerId], null, true);
 }
