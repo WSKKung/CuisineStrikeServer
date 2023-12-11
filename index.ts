@@ -7,6 +7,7 @@ const InitModule: nkruntime.InitModule = function(ctx, logger, nk, initializer) 
 	initializer.registerMatchmakerMatched(matchmakerMatched)
 	logger.info("MatchmakerMatched hook registered");
 	logger.info("Typescript Runtime ready, les go, woo!!!");
+	initializer.registerStorageIndex("cards", "cards", undefined, ["name", "type", "description", "class", "grade", "power", "health"], 1000, false);
 };
 
 // Modify client matchmaking request

@@ -38,15 +38,30 @@ namespace Card {
 		// load from cache
 		let cardPropertiesCache = nk.localcacheGet("cardProperties") || {};
 		// read database
+		// nk.storageRead([
+		// 	{
+		// 		collection: "cards",
+		// 		key: code.toString(),
+		// 		userId: "00000000-0000-0000-0000-000000000000"
+		// 	}
+		// ])
+		let queryResult = nk.storageRead([
+			{
+				collection: "cards",
+				key: code.toString(),
+				userId: "00000000-0000-0000-0000-000000000000"
+			}
+		]);
+		let cardData = (queryResult[0] && queryResult[0].value) || {};
 		let baseProperties: CardProperties = cardPropertiesCache[code] || {
 			code,
-			name: "",
-			type: CardType.UNKNOWN,
-			description: "",
-			class: CardClass.UNKNOWN,
-			grade: 0,
-			power: 0,
-			health: 0
+			name: cardData.name || "Unknown",
+			type: cardData.type || CardType.UNKNOWN,
+			description: cardData.description || "",
+			class: cardData.class || CardClass.UNKNOWN,
+			grade: cardData.grade || 0,
+			power: cardData.power || 0,
+			health: cardData.health || 0
 		};
 		cardPropertiesCache[code] = baseProperties;
 		nk.localcachePut("cardProperties", cardPropertiesCache);
