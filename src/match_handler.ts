@@ -69,8 +69,10 @@ const matchLeave: nkruntime.MatchLeaveFunction = function(ctx, logger, nk, dispa
 };
 
 const matchLoop: nkruntime.MatchLoopFunction = function(ctx, logger, nk, dispatcher, tick, state, messages) {
-	let gameState = state as GameState
+	let gameState = state as GameState;
+	let matchDispatcher = createNakamaMatchDispatcher(dispatcher, gameState);
 	let players = Match.getActivePlayers(gameState);
+	
 	switch (gameState.status) {
 		case "init":
 			// wait until all players join the game
@@ -79,7 +81,7 @@ const matchLoop: nkruntime.MatchLoopFunction = function(ctx, logger, nk, dispatc
 				players.forEach(id => {
 					let deckCards: Array<Card> = []
 					for (let i = 0; i < 40; i++) {
-						let newCard = Card.create(nk.uuidv4(), 0, nk);
+						let newCard = Card.create(nk.uuidv4(), 1, nk);
 						deckCards.push(newCard);
 					}
 					Match.moveCard(gameState, deckCards, CardLocation.MAIN_DECK, id, 0, "shuffle");
@@ -90,7 +92,7 @@ const matchLoop: nkruntime.MatchLoopFunction = function(ctx, logger, nk, dispatc
 				gameState.turnCount = 1;
 				gameState.turnPlayer = players[0];
 				gameState.status = "running";
-				players.forEach(id => sendCurrentGameState(gameState, dispatcher, id));
+				players.forEach(id => sendCurrentGameState(gameState, matchDispatcher, id));
 			}
 			break;
 
@@ -105,7 +107,12 @@ const matchLoop: nkruntime.MatchLoopFunction = function(ctx, logger, nk, dispatc
 			}
 
 			// read player messages
-			messages.forEach(msg => receivePlayerMessage(gameState, logger, nk, dispatcher, msg));
+			messages.forEach(msg => {
+				let senderId = getPlayerId(msg.sender);
+				let opCode = msg.opCode;
+				let dataStr = nk.binaryToString(msg.data);
+				receivePlayerMessage(gameState, senderId, opCode, dataStr, matchDispatcher, logger);
+			});
 
 			// check win-con
 			let hasLoser = false;
@@ -126,7 +133,7 @@ const matchLoop: nkruntime.MatchLoopFunction = function(ctx, logger, nk, dispatc
 			break;
 
 		case "ended":
-			players.forEach(id => sendEventGameEnded(gameState, dispatcher, id));
+			players.forEach(id => sendEventGameEnded(gameState, matchDispatcher, id));
 			return null;
 	}
 
@@ -147,9 +154,10 @@ const matchSignal: nkruntime.MatchSignalFunction = function(ctx, logger, nk, dis
 
 const matchTerminate: nkruntime.MatchTerminateFunction = function(ctx, logger, nk, dispatcher, tick, state, graceSeconds) {
 	let gameState = state as GameState
+	let matchDispatcher = createNakamaMatchDispatcher(dispatcher, gameState);
 	let players = Match.getActivePlayers(gameState);
 	// notify match terminate
-	players.forEach(id => sendEventGameEnded(gameState, dispatcher, id));
+	players.forEach(id => sendEventGameEnded(gameState, matchDispatcher, id));
 	// remove all players from game state
 	players.forEach(id => delete(gameState.players[id]));
 	logger.info(`Match terminated`);
