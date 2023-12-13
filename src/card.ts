@@ -19,7 +19,7 @@ interface CardProperties {
 	name: string,
 	type: CardType,
 	description: string,
-	class: CardClass
+	classes: CardClass
 	grade: number,
 	power: number,
 	health: number,
@@ -58,7 +58,7 @@ namespace Card {
 			name: cardData.name || "Unknown",
 			type: cardData.type || CardType.UNKNOWN,
 			description: cardData.description || "",
-			class: cardData.class || CardClass.UNKNOWN,
+			classes: cardData.class || CardClass.UNKNOWN,
 			grade: cardData.grade || 0,
 			power: cardData.power || 0,
 			health: cardData.health || 0
@@ -79,7 +79,7 @@ namespace Card {
 			name: base_properties.name,
 			type: base_properties.type,
 			description: base_properties.description,
-			class: base_properties.class,
+			classes: base_properties.classes,
 			grade: base_properties.grade,
 			power: base_properties.power,
 			health: base_properties.health
@@ -110,7 +110,7 @@ namespace Card {
 	}
 
 	export function getClass(card: Card): CardClass {
-		return card.properties.class;
+		return card.properties.classes;
 	}
 
 	export function getGrade(card: Card): number {

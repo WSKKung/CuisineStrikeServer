@@ -18,6 +18,7 @@ enum PlayerActionCode {
 enum MatchEventCode {
 	MESSAGE = 1,
 	END_TURN = 2,
+	UPDATE_STATE = 51,
 	END_GAME = 99
 }
 

@@ -14,12 +14,12 @@ function receivePlayerMessage(state: GameState, senderId: string, opCode: number
 		case PlayerActionCode.MESSAGE:
 			// Send user message to opponent
 			let senderOpponent = Match.getOpponent(state, senderId);
-			dispatcher.dispatch(MATCH_OPCODE_MSG, msg, [senderOpponent], senderId, true);
+			dispatcher.dispatch(MatchEventCode.MESSAGE, msg, [senderOpponent], senderId, true);
 
 			break;
 		case PlayerActionCode.END_TURN:
 			if (!isSenderTurnPlayer) {
-				dispatcher.dispatch(MATCH_OPCODE_MSG, "It's not your turn yet!", [senderId], null, true);
+				dispatcher.dispatch(MatchEventCode.MESSAGE, "It's not your turn yet!", [senderId], null, true);
 				break;
 			}
 			// end turn
@@ -29,7 +29,7 @@ function receivePlayerMessage(state: GameState, senderId: string, opCode: number
 			break;
 		case PlayerActionCode.ATTACK:
 			if (!isSenderTurnPlayer) {
-				dispatcher.dispatch(MATCH_OPCODE_MSG, "It's not your turn yet!", [senderId], null, true);
+				dispatcher.dispatch(MatchEventCode.MESSAGE, "It's not your turn yet!", [senderId], null, true);
 				break;
 			}
 		
@@ -76,7 +76,7 @@ function sendCurrentGameState(state: GameState, dispatcher: MatchMessageDispatch
 			mainDeck: Match.getCards(state, CardLocation.MAIN_DECK, opponent).map(serializePrivateCardData)
 		}
 	};
-	dispatcher.dispatch(MATCH_OPCODE_MSG, JSON.stringify(gameBeginMsgData), [playerId], null, true);
+	dispatcher.dispatch(MatchEventCode.UPDATE_STATE, JSON.stringify(gameBeginMsgData), [playerId], null, true);
 }
 
 function sendEventTurnChanged(state: GameState, dispatcher: MatchMessageDispatcher, playerId: string) {
