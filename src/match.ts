@@ -183,12 +183,18 @@ namespace Match {
 	export function getTopCards(state: GameState, count: number, location: CardLocation, ownerId: string, column?: number): Array<Card> {
 		let cards = getCards(state, location, ownerId, column);
 		count = Math.min(count, cards.length);
-		return cards.slice(-1, -(count + 1));
+		return cards.slice(-(count + 1), -1);
 		
 	}
 
 	export function gotoNextTurn(state: GameState): void {
 		state.turnCount += 1;
 		state.turnPlayer = getOpponent(state, state.turnPlayer);
+		
+	}
+
+	export function isWinner(state: GameState, playerId: string): boolean {
+		if (state.status !== "ended") return false;
+		return (state.winner && state.winner === playerId) || false;
 	}
 }
