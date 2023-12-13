@@ -1,13 +1,10 @@
 {
 	"files": [
-		"./index.ts",
-		"./src/match_handler.ts",
-		"./src/match.ts",
-		"./src/card.ts",
-		"./src/field.ts",
-		"./src/constants.ts",
-		"./src/communication.ts",
-		"./src/wrapper.ts",
+		"./index.ts"
+	],
+	"include": [
+		"./src/communications/*",
+		"./src/*"
 	],
 	"compilerOptions": {
 	  "target": "es5",
