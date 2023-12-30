@@ -14,6 +14,8 @@ enum CardClass {
 	UNKNOWN = 0b0,
 }
 
+type CardID = string
+
 interface CardProperties {
 	code: number,
 	name: string,
@@ -26,10 +28,13 @@ interface CardProperties {
 }
 
 interface Card {
-	id: string,
+	id: CardID,
+	owner: string,
 	base_properties: CardProperties,
 	properties: CardProperties,
-	zone?: CardZone
+	zone?: CardZone,
+	location: CardLocation,
+	column: number
 }
 
 namespace Card {
@@ -69,7 +74,7 @@ namespace Card {
 	}
 
 
-	export function create(id: string, code: number, nk: nkruntime.Nakama): Card {
+	export function create(id: CardID, code: number, owner: string, nk: nkruntime.Nakama): Card {
 		// load card base properties from code
 		let base_properties: CardProperties = loadCardBaseProperties(code, nk);
 		// create instance property
@@ -87,8 +92,11 @@ namespace Card {
 		// create card instance
 		let card: Card = {
 			id: id,
+			owner: owner,
 			base_properties,
-			properties
+			properties,
+			location: CardLocation.VOID,
+			column: 0
 		};
 		return card;
 	}
@@ -142,19 +150,23 @@ namespace Card {
 	}
 
 	export function getLocation(card: Card): CardLocation {
-		return card.zone ? card.zone.location : CardLocation.VOID;
+		return card.location;
 	}
 
 	export function getColumn(card: Card): number {
-		return card.zone ? card.zone.column : 0;
+		return card.column;
+	}
+
+	export function getOwner(card: Card): string {
+		return card.owner;
 	}
 
 	export function hasType(card: Card, type: CardType): boolean {
-		return (getType(card) & type) === type;
+		return Utility.bitMaskIntersects(getType(card), type);
 	}
 	
 	export function hasClass(card: Card, c_class: CardClass): boolean {
-		return (getClass(card) & c_class) === c_class;
+		return Utility.bitMaskIntersects(getClass(card), c_class);
 	}
 
 	export function setGrade(card: Card, amount: number): void {
@@ -169,5 +181,16 @@ namespace Card {
 		card.properties.health = amount;
 	}
 
+	export function hasLocation(card: Card, location: CardLocation): boolean {
+		return (getLocation(card) & location) > 0;
+	}
+
+	export function isAbleToSetAsIngredient(card: Card): boolean {
+		return hasType(card, CardType.INGREDIENT) && (hasLocation(card, CardLocation.HAND | CardLocation.SERVE_ZONE));
+	}
+
+	export function getIngredientMaterialCost(card: Card): number {
+		return Utility.bitMaskIncludes(Card.getType(card), CardType.INGREDIENT_DISH) ? 0 : getBaseGrade(card) - 1
+	}
 
 }
