@@ -70,6 +70,7 @@ const matchLeave: nkruntime.MatchLeaveFunction = function(ctx, logger, nk, dispa
 
 const matchLoop: nkruntime.MatchLoopFunction = function(ctx, logger, nk, dispatcher, tick, state, messages) {
 	let gameState = state as GameState;
+	gameState.log = logger
 	let matchDispatcher = createNakamaMatchDispatcher(dispatcher, gameState);
 	let players = Match.getActivePlayers(gameState);
 	
@@ -80,23 +81,44 @@ const matchLoop: nkruntime.MatchLoopFunction = function(ctx, logger, nk, dispatc
 				// initialize deck
 				players.forEach(id => {
 					let deckCards: Array<Card> = []
-					for (let i = 0; i < 40; i++) {
-						let newCard = Card.create(nk.uuidv4(), 1, nk);
+					for (let i = 0; i < 5; i++) {
+						let cardId = nk.uuidv4();
+						let cardCode = 1;
+						let newCard = Card.create(cardId, cardCode, id, nk);
 						deckCards.push(newCard);
 					}
-					Match.moveCard(gameState, deckCards, CardLocation.MAIN_DECK, id, 0, "shuffle");
-					let cardsToBeHand = Match.getTopCards(gameState, 4, CardLocation.MAIN_DECK, id);
+					Match.moveCard(gameState, deckCards, CardLocation.MAIN_DECK, id, null, "shuffle");
+					let initialHandSize = 4;
+					let cardsToBeHand = Match.getTopCards(gameState, initialHandSize, CardLocation.MAIN_DECK, id);
 					Match.moveCard(gameState, cardsToBeHand, CardLocation.HAND, id);
 				});
+
 				// initialize gamestate
 				gameState.turnCount = 1;
 				gameState.turnPlayer = players[0];
 				gameState.status = "running";
-				players.forEach(id => sendCurrentGameState(gameState, matchDispatcher, id));
+				broadcastMatchState(gameState, matchDispatcher);	
+
+				/** 
+				let serializableState: {[playerId: string]: any} = {}
+				Match.getActivePlayers(gameState).forEach(id => {
+					serializableState[id] = {
+						hand: Match.getCards(gameState, CardLocation.HAND, id).map(c => c.id),
+						mainDeck: Match.getCards(gameState, CardLocation.MAIN_DECK, id).map(c => c.id),
+						recipeDeck: Match.getCards(gameState, CardLocation.RECIPE_DECK, id).map(c => c.id),
+						trash: Match.getCards(gameState, CardLocation.TRASH, id).map(c => c.id),
+						serveZone: Match.getCards(gameState, CardLocation.SERVE_ZONE, id).map(c => c.id),
+						standbyZone: Match.getCards(gameState, CardLocation.STANDBY_ZONE, id).map(c => c.id)
+					}
+				})
+				logger.info("match state field: " + JSON.stringify(serializableState))
+				*/
 			}
 			break;
 
 		case "running":	
+
+			let previousLastAction = gameState.lastAction;
 
 			// end game if no enough player to play the game
 			if (players.length < 2) {
@@ -113,6 +135,14 @@ const matchLoop: nkruntime.MatchLoopFunction = function(ctx, logger, nk, dispatc
 				let dataStr = nk.binaryToString(msg.data);
 				receivePlayerMessage(gameState, senderId, opCode, dataStr, matchDispatcher, logger);
 			});
+
+			// check if an action happened
+			let currentLastAction = gameState.lastAction;
+			if (currentLastAction && currentLastAction !== previousLastAction) {
+				// broadcast event from last action happened to every player
+				broadcastMatchActionEvent(gameState, matchDispatcher, currentLastAction);
+				logger.info("detected last action update")
+			}
 
 			// check win-con
 			let hasLoser = false;
@@ -133,7 +163,8 @@ const matchLoop: nkruntime.MatchLoopFunction = function(ctx, logger, nk, dispatc
 			break;
 
 		case "ended":
-			players.forEach(id => sendEventGameEnded(gameState, matchDispatcher, id));
+			broadcastMatchEnd(gameState, matchDispatcher);
+			//players.forEach(id => sendEventGameEnded(gameState, matchDispatcher, id));
 			return null;
 	}
 
@@ -145,7 +176,6 @@ const matchLoop: nkruntime.MatchLoopFunction = function(ctx, logger, nk, dispatc
 const matchSignal: nkruntime.MatchSignalFunction = function(ctx, logger, nk, dispatcher, tick, state, data) {
 	let gameState = state as GameState
 	logger.info(`Match signal received: ${data}`);
-	
 	return {
 		state: gameState,
 		data
@@ -157,7 +187,7 @@ const matchTerminate: nkruntime.MatchTerminateFunction = function(ctx, logger, n
 	let matchDispatcher = createNakamaMatchDispatcher(dispatcher, gameState);
 	let players = Match.getActivePlayers(gameState);
 	// notify match terminate
-	players.forEach(id => sendEventGameEnded(gameState, matchDispatcher, id));
+	broadcastMatchEnd(gameState, matchDispatcher);
 	// remove all players from game state
 	players.forEach(id => delete(gameState.players[id]));
 	logger.info(`Match terminated`);

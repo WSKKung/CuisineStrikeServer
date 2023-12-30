@@ -1,83 +1,92 @@
+/*
+CHAT_MESSAGE,
+PREGAME_CONFIRM,
+COMMIT_ACTION,
+SURRENDER
+*/
 enum PlayerActionCode {
 	MESSAGE = 1,
-	END_TURN = 2,
-	PLAY_INGREDIENT = 3,
-	SUMMON_DISH = 4,
-	ATTACK = 5,
-	PLAY_ACTION = 6,
-	PLAY_TRIGGER = 7,
-	ACTIVATE_ABILITY = 8,
-	END_GAME = 99
+	COMMIT_ACTION = 2,
+	SURRENDER = 3,
+	END_TURN = 4,
+	SET_INGREDIENT = 5,
+	SUMMON_DISH = 6,
+	ATTACK = 7,
+	CHECK_SET_INGREDIENT = 8,
+	CHECK_SUMMON_DISH = 9,
+	CHECK_ATTACK_TARGET = 10
 }
-
-// returns bool => true == continue running, false == stop running
-type PlayerActionHandlerFunction = (playerId: string, state: GameState, dispatcher: MatchMessageDispatcher, logger: nkruntime.Logger, params: {[key: string]: any}) => boolean;
-type PlayerActionHandler = {
-	[opCode: number]: PlayerActionHandlerFunction
-	fallback: PlayerActionHandlerFunction
-};
-
-function chain(...handlers: PlayerActionHandlerFunction[]): PlayerActionHandlerFunction {
-	return (playerId, state, dispatcher, logger, params) => {
-		let shouldContinue: boolean = true;
-		for (let handler of handlers) {
-			shouldContinue = handler(playerId, state, dispatcher, logger, params);
-			if (!shouldContinue) {
-				break;
-			}
-		}
-		return shouldContinue;
-	};
-}
-
-const invalidMessageHandler: PlayerActionHandlerFunction = (playerId, state, dispatcher, logger, params) => {
-	dispatcher.dispatch(MatchEventCode.MESSAGE, "Unknown action opcode", [playerId], null, true);
-	return true;
-};
-
-const checkTurnPlayer: PlayerActionHandlerFunction = (playerId, state, dispatcher, logger, params) => {
-	return Match.isPlayerTurn(state, playerId);
-};
-
-const genericMessageHandler: PlayerActionHandlerFunction  = (playerId, state, dispatcher, logger, params) => {
-	// Send user message to opponent
-	let senderOpponent = Match.getOpponent(state, playerId);
-	dispatcher.dispatch(MatchEventCode.MESSAGE, JSON.stringify(params), [senderOpponent], playerId, true);
-	return true;
-};
-
-const endTurnHandler: PlayerActionHandlerFunction = (playerId, state, dispatcher, logger, params) => {
-	Match.gotoNextTurn(state);
-	Match.getActivePlayers(state).forEach(id => sendEventTurnChanged(state, dispatcher, id));
-	return true;
-};
-
-const attackHandler: PlayerActionHandlerFunction = (playerId, state, dispatcher, logger, params) => {
-	let opponent = Match.getOpponent(state, playerId);
-	let opponentOldHP = Match.getHP(state, opponent);
-	let damage: number = (params && params.amount) || 0;
-	Match.setHP(state, opponent, opponentOldHP - damage);
-	Match.getActivePlayers(state).forEach(id => sendEventPlayerHPChanged(state, dispatcher, id));
-	return true;
-};
 
 function receivePlayerMessage(state: GameState, senderId: string, opCode: number, msg: string, dispatcher: MatchMessageDispatcher, logger: nkruntime.Logger) {
-	let msgDataObj: any
+	// parse message payload
+	let msgParams: any
 	try {
-		msgDataObj = JSON.parse(msg);
+		msgParams = JSON.parse(msg);
 	}
 	catch (err) {
-		logger.info(`Error parsing data string from message: ${msg}`)
-		msgDataObj = {}
+		logger.info(`Error parsing data string from message: ${msg}`);
+		msgParams = {};
 	}
 
-	const actionHandlers: PlayerActionHandler = {
-		[PlayerActionCode.MESSAGE]: genericMessageHandler,
-		[PlayerActionCode.END_TURN]: chain(checkTurnPlayer, endTurnHandler),
-		[PlayerActionCode.ATTACK]: chain(checkTurnPlayer, attackHandler),
-		fallback: invalidMessageHandler
-	};
+	switch (opCode) {
+		case PlayerActionCode.MESSAGE:
+			genericMessageHandler(senderId, state, dispatcher, logger, msgParams);
 
-	let handler = actionHandlers[opCode] || actionHandlers.fallback
-	handler(senderId, state, dispatcher, logger, msgDataObj);
+			break;
+		case PlayerActionCode.COMMIT_ACTION:
+			handlePlayerAction(senderId, state, dispatcher, logger, msgParams);
+			break;
+	}
+}
+
+function genericMessageHandler(senderId: string, state: GameState, dispatcher: MatchMessageDispatcher, logger: nkruntime.Logger, params: any) {
+	// Send user message to opponent
+	let senderOpponent = Match.getOpponent(state, senderId);
+	dispatcher.dispatch(MatchEventCode.MESSAGE, JSON.stringify(params), [senderOpponent], senderId, true);
+	return true;
+}
+
+function handlePlayerAction(senderId: string, state: GameState, dispatcher: MatchMessageDispatcher, logger: nkruntime.Logger, params: any) {
+	let actionType: string = params["type"];
+	let actionHandler: ActionHandler | null = getActionHandler(actionType as ActionType)
+	if (!actionHandler) {
+		return;
+	}
+
+	let result = actionHandler(state, senderId, params);
+	if (result.success) {
+		state.lastAction = result;
+	}
+	else {
+		sendToPlayer(dispatcher, MatchEventCode.MESSAGE, { error: true, data: result.data }, senderId);
+	}
+	/** 
+	let actionId: string = params["id"];
+	let action = Match.findActionById(state, senderId, actionId);
+	// Handle non-existence action
+	if (!action) {
+		return;
+	}
+	const actionHandlers: PlayerActionHandler = {
+		[MatchActionType.END_TURN]: endTurnHandler,
+		[MatchActionType.SET_INGREDIENT]: setIngredientHandler,
+		[MatchActionType.ATTACK]: attackHandler,
+		[MatchActionType.DISH_SUMMON]: endTurnHandler
+	};
+	let typeString: string = action.type; //params["type"];
+	let matchActionTypes: MatchActionType[] = (<MatchActionType[]>(<any>Object).values(MatchActionType))
+	let type: MatchActionType | undefined = undefined;
+	for (let matchActionType of matchActionTypes) {
+		if (matchActionType === typeString) {
+			type = matchActionType;
+			break;
+		}
+	}
+	if (!type) {
+		logger.warn("Invalid player action: handler with type " + type + " (" + typeString + ") does not exist!");
+		return;
+	}
+	let handler = actionHandlers[type];
+	handler(senderId, state, dispatcher, logger, params);
+	*/
 }

@@ -1,8 +1,11 @@
 enum MatchEventCode {
 	MESSAGE = 1,
-	END_TURN = 2,
-	ATTACK = 5,
-	UPDATE_STATE = 51,
+	UPDATE_STATE = 2,
+	UPDATE_ACTION_POOL = 3,
+	CHANGE_TURN = 4,
+	SET_INGREDIENT = 5,
+	SUMMON_DISH = 5,
+	ATTACK = 6,
 	END_GAME = 99
 }
 
@@ -40,9 +43,20 @@ interface TurnChangePacket {
 	is_your_turn: boolean
 }
 
+interface DrawCardPacket {
+	you: {
+		amount: number
+	},
+	opponent: {
+		amount: number
+	}
+}
+
 interface AttackPacket {
 	attacker_card: string,
 	target_card?: string,
+	is_direct_attack: boolean,
+	destroyed_cards: Array<string>
 	you: {
 		hp: number
 	},
@@ -69,56 +83,93 @@ function serializePublicCardData(card: Card): CardPacket {
 	};
 }
 
-function sendCurrentGameState(state: GameState, dispatcher: MatchMessageDispatcher, playerId: string) {
-	let opponent = Match.getOpponent(state, playerId);
-	let gameBeginMsgData: UpdateGameStatePacket = {
-		turn_count: state.turnCount,
-		is_your_turn: Match.isPlayerTurn(state, playerId),
-		you: {
-			username: Match.getPresence(state, playerId).username,
-			hp: Match.getPlayer(state, playerId).hp,
-			hand: Match.getCards(state, CardLocation.HAND, playerId).map(serializePublicCardData),
-			main_deck: Match.getCards(state, CardLocation.MAIN_DECK, playerId).map(serializePrivateCardData),
-			recipe_deck: Match.getCards(state, CardLocation.MAIN_DECK, playerId).map(serializePrivateCardData)
-		},
-		opponent: {
-			username: Match.getPresence(state, opponent).username,
-			hp: Match.getPlayer(state, opponent).hp,
-			hand: Match.getCards(state, CardLocation.HAND, opponent).map(serializePrivateCardData),
-			main_deck: Match.getCards(state, CardLocation.MAIN_DECK, opponent).map(serializePrivateCardData),
-			recipe_deck: Match.getCards(state, CardLocation.MAIN_DECK, playerId).map(serializePrivateCardData)
+function localizeCardData(cards: Array<Card>, state: GameState, playerId: string): Array<CardPacket> {
+	return cards.map(card => {
+		let isCardOwner = card.owner === playerId;
+		let isDataPublicForPlayer = false;
+
+		// public zone
+		if (Card.hasLocation(card, CardLocation.SERVE_ZONE | CardLocation.STANDBY_ZONE | CardLocation.TRASH)) {
+			isDataPublicForPlayer = true;
 		}
-	};
-	dispatcher.dispatch(MatchEventCode.UPDATE_STATE, JSON.stringify(gameBeginMsgData), [playerId], null, true);
+		// private zone
+		else if (Card.hasLocation(card, CardLocation.HAND | CardLocation.RECIPE_DECK) && isCardOwner) {
+			isDataPublicForPlayer = true;
+		}
+
+		if (isDataPublicForPlayer) {
+			return {
+				id: card.id,
+				is_owned: isCardOwner,
+				base_properties: card.base_properties,
+				properties: card.properties
+			};
+		}
+		else {
+			return {
+				id: card.id,
+				is_owned: isCardOwner
+			};
+		}
+	});
 }
 
-function sendEventTurnChanged(state: GameState, dispatcher: MatchMessageDispatcher, playerId: string) {
-	let turnEndMsgData: TurnChangePacket = {
-		turn_count: state.turnCount,
-		is_your_turn: Match.isPlayerTurn(state, playerId)
-	};
-	dispatcher.dispatch(MatchEventCode.END_TURN, JSON.stringify(turnEndMsgData), [playerId], null, true);
+function sendToPlayer(dispatcher: MatchMessageDispatcher, opCode: number, dataObject: Object, playerId: string) {
+	dispatcher.dispatch(opCode, JSON.stringify(dataObject), [playerId], null, true);
 }
 
-function sendEventPlayerHPChanged(state: GameState, dispatcher: MatchMessageDispatcher, playerId: string) {
-	let opponent = Match.getOpponent(state, playerId);
-	let playerHP = Match.getHP(state, playerId);
-	let opponentHP = Match.getHP(state, opponent);
-	let attackMsgData: AttackPacket = {
-		attacker_card: "",
-		you: {
-			hp: playerHP
-		},
-		opponent: {
-			hp: opponentHP
-		},
+function deferSendToPlayer(dispatcher: MatchMessageDispatcher, opCode: number, dataObject: Object, playerId: string) {
+	dispatcher.dispatchDeferred(opCode, JSON.stringify(dataObject), [playerId], null, true);
+}
+
+function broadcastMatchState(state: GameState, dispatcher: MatchMessageDispatcher) {
+	Match.getActivePlayers(state).forEach(playerId => {
+		let opponent = Match.getOpponent(state, playerId);
+		let event: UpdateGameStatePacket = {
+			turn_count: state.turnCount,
+			is_your_turn: Match.isPlayerTurn(state, playerId),
+			you: {
+				username: Match.getPresence(state, playerId).username,
+				hp: Match.getPlayer(state, playerId).hp,
+				hand: localizeCardData(Match.getCards(state, CardLocation.HAND, playerId), state, playerId),
+				main_deck: localizeCardData(Match.getCards(state, CardLocation.MAIN_DECK, playerId), state, playerId),
+				recipe_deck: localizeCardData(Match.getCards(state, CardLocation.RECIPE_DECK, playerId), state, playerId)
+			},
+			opponent: {
+				username: Match.getPresence(state, opponent).username,
+				hp: Match.getPlayer(state, opponent).hp,
+				hand: localizeCardData(Match.getCards(state, CardLocation.HAND, opponent), state, playerId),
+				main_deck: localizeCardData(Match.getCards(state, CardLocation.MAIN_DECK, opponent), state, playerId),
+				recipe_deck: localizeCardData(Match.getCards(state, CardLocation.RECIPE_DECK, opponent), state, playerId)
+			}
+		};
+		sendToPlayer(dispatcher, MatchEventCode.UPDATE_STATE, event, playerId)
+	});
+}
+
+function broadcastMatchActionEvent(state: GameState, dispatcher: MatchMessageDispatcher, action: ActionResult) {
+	switch (action.type) {
+		case "end_turn":
+			Match.getActivePlayers(state).forEach(playerId => {
+				let event: TurnChangePacket = {
+					turn_count: state.turnCount,
+					is_your_turn: Match.isPlayerTurn(state, playerId)
+				}
+				sendToPlayer(dispatcher, MatchEventCode.CHANGE_TURN, event, playerId)
+			});
+			break;
+		case "set_ingredient":
+			Match.getActivePlayers(state).forEach(playerId => {
+				sendToPlayer(dispatcher, MatchEventCode.SET_INGREDIENT, action.data, playerId)
+			});
 	}
-	dispatcher.dispatch(MatchEventCode.ATTACK, JSON.stringify(attackMsgData), [playerId], null, true);
 }
 
-function sendEventGameEnded(state: GameState, dispatcher: MatchMessageDispatcher, playerId: string) {
-	let gameEndMsgData: GameEndPacket = {
-		is_winner: Match.isWinner(state, playerId)
-	};
-	dispatcher.dispatch(MatchEventCode.END_GAME, JSON.stringify(gameEndMsgData), [playerId], null, true);
+function broadcastMatchEnd(state: GameState, dispatcher: MatchMessageDispatcher) {
+	Match.getActivePlayers(state).forEach(playerId => {
+		let event = {
+			is_winner: Match.isWinner(state, playerId)
+		}
+		sendToPlayer(dispatcher, MatchEventCode.END_GAME, event, playerId)
+	});
 }

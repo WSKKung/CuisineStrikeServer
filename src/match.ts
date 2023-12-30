@@ -1,11 +1,16 @@
+interface GameResult {
+	winner: string | null,
+	reason: string
+}
+
 interface GameState extends nkruntime.MatchState {
-	/**@deprecated */
-	presences: {[id: string]: nkruntime.Presence},
+	log?: nkruntime.Logger,
 	players: {[id: string]: PlayerData},
 	status: "init" | "running" | "ended",
 	turnPlayer: string,
 	turnCount: number,
-	winner?: string
+	endResult: GameResult | null,
+	lastAction: ActionResult | null
 }
 
 interface PlayerData {
@@ -18,7 +23,7 @@ interface PlayerData {
 	recipeDeck: CardZone,
 	trash: CardZone,
 	serveZones: Array<CardZone>,
-	standbyZone: Array<CardZone>,
+	standbyZone: Array<CardZone>
 }
 
 function getPlayerId(presence: nkruntime.Presence): string {
@@ -48,12 +53,13 @@ namespace Match {
 
 	export function createState(): GameState {
 		return {
-			presences: {},
 			playerData: {},
 			players: {},
 			status: "init",
 			turnPlayer: "",
-			turnCount: 0
+			turnCount: 0,
+			endResult: null,
+			lastAction: null
 		};
 	}
 
@@ -100,8 +106,9 @@ namespace Match {
 
 	export function setHP(state: GameState, playerId: string, hp: number): void {
 		if (hp < 0) hp = 0;
-		state.players[playerId].prevHp = state.players[playerId].hp;
-		state.players[playerId].hp = hp;
+		let player = state.players[playerId];
+		player.prevHp = player.hp;
+		player.hp = hp;
 	}
 
 	export function setPresence(state: GameState, playerId: string, presence: nkruntime.Presence): void {
@@ -141,60 +148,135 @@ namespace Match {
 			case CardLocation.STANDBY_ZONE:
 				return playerData.standbyZone[column];
 			default:
-				throw new Error("Unknown zone location");
+				throw new Error("Unknown zone location, or the specified zone is a compound zone");
 		}
 	}
 
-	export function moveCard(state: GameState, cards: Card | Array<Card>, targetLocation: CardLocation, targetPlayerId: string, column?: number, insertLocation?: "top" | "bottom" | "shuffle") {
-		// default parameters
-		column = column || 0;
+	export function getZones(state: GameState, ownerId?: string): Array<CardZone> {
+		if (!ownerId) {
+			return Match.getActivePlayers(state).map(id => getZones(state, id)).reduce((z1, z2) => z1.concat(z2), []);
+		}
+
+		var playerData = getPlayer(state, ownerId);
+		return [
+			playerData.hand, playerData.mainDeck, playerData.recipeDeck, playerData.trash, ...playerData.serveZones, ...playerData.standbyZone
+		];
+	}
+
+	export function findZones(state: GameState, location: CardLocation, ownerId?: string, column?: number | null): Array<CardZone> {
+		if (location === CardLocation.VOID) {
+			return [];
+		}
+		// Filter in any zone that has any location specified in the location parameter
+		// And if column parameter is specified, filter in only zones with the same column
+		var zones = getZones(state, ownerId);
+		var foundZones = zones.filter(zone => Utility.bitMaskIntersects(zone.location, location) && (!column || (column === zone.column)));
+		//state.log?.debug("findZones called with location: %d, got zone with the following locations and size: %s", location, foundZones.map(z => "" + z.location + "," + z.cards.length).reduce((l1, l2) => l1 + " " + l2, ""));
+		return foundZones;
+	}
+
+	export function moveCard(state: GameState, cards: Array<Card>, targetLocation: CardLocation, targetPlayerId: string, column?: number | null, insertLocation?: "top" | "bottom" | "shuffle") {
 		insertLocation = insertLocation || "top";
-		if (!(cards instanceof Array)) {
-			cards = [ cards ];
+
+		let targetZones = findZones(state, targetLocation, targetPlayerId, column);
+		let targetZone: CardZone | undefined = targetZones.length === 0 ? undefined : targetZones[0];
+
+		// remove each card from their previous zone
+		cards.forEach(card => {
+			let oldLocation = Card.getLocation(card);
+			let oldZone = findZones(state, oldLocation, Card.getOwner(card), Card.getColumn(card))
+			if (oldZone.length > 0) {
+				oldZone[0].cards = oldZone[0].cards.filter(cardInZone => cardInZone.id !== card.id);
+			}
+		});
+
+		// assign new zone for each card
+		// this should be assigned before putting into zone first because if not the data will somehow not persists idkw but i want to die now
+		cards.forEach(card => {
+			card.location = (targetZone ? targetZone.location : CardLocation.VOID);
+			card.column = (targetZone ? targetZone.column : 0);
+		});
+
+		// place a card in the new zone
+		if (targetZone) {
+			switch (insertLocation) {
+				case "top":
+					targetZone.cards = targetZone.cards.concat(cards);
+					break;
+				case "bottom":
+					targetZone.cards = cards.concat(targetZone.cards);
+					break;
+				case "shuffle":
+					targetZone.cards = targetZone.cards.concat(cards);
+					break;
+			}
 		}
 
-		let targetZone = findZone(state, targetLocation, targetPlayerId, column);
-		switch (insertLocation) {
-			case "top":
-				targetZone.cards.push(...cards);
-				break;
-			case "bottom":
-				targetZone.cards = cards.concat(targetZone.cards);
-				break;
-			case "shuffle":
-				targetZone.cards.push(...cards);
-				break;
-		}
-		cards.forEach(card => card.zone = targetZone);
 	}
-	export function getCards(state: GameState, location: CardLocation, ownerId: string, column?: number): Array<Card> {
-		// default parameters
-		column = column || 0;
 
-		let targetZone = findZone(state, location, ownerId, column);
-		return [ ...targetZone.cards ];
+	export function getCards(state: GameState, location: CardLocation, ownerId?: string, column?: number): Array<Card> {
+		let targetZones = findZones(state, location, ownerId, column);
+		return targetZones.map(zone => zone.cards).reduce((prev, cur) => prev.concat(cur), []);
 		
 	}
+
 	export function findCards(state: GameState, filterCondition: (card: Card) => boolean, location: CardLocation, ownerId: string, column?: number): Array<Card> {
-		let cards = getCards(state, location, ownerId, column);
-		return cards.filter(filterCondition);
+		let targetZones = findZones(state, location, ownerId, column);
+		// Same as getCards but add filter mapping in-between map and reduce
+		return targetZones.map(zone => zone.cards).map(cards => cards.filter(filterCondition)).reduce((prev, cur) => prev.concat(cur), []);
+	}
+
+	/**
+	 * Returns the first card with the specified id from a given game state
+	 * @param state 
+	 * @param id 
+	 * @param location 
+	 * @param ownerId 
+	 * @param column 
+	 * @returns 
+	 */
+	export function findCardByID(state: GameState, id: CardID, location: CardLocation, ownerId: string, column?: number): Card | null {
+		let targetZones = findZones(state, location, ownerId, column);
+		for (let zone of targetZones) {
+			let cards = zone.cards;
+			let foundCards = cards.filter(card => card.id === id);
+			if (foundCards.length > 0) {
+				return foundCards[0];
+			}
+		}
+		return null;
 	}
 
 	export function getTopCards(state: GameState, count: number, location: CardLocation, ownerId: string, column?: number): Array<Card> {
 		let cards = getCards(state, location, ownerId, column);
 		count = Math.min(count, cards.length);
-		return cards.slice(-(count + 1), -1);
-		
+		return cards.slice(-count);
 	}
 
 	export function gotoNextTurn(state: GameState): void {
 		state.turnCount += 1;
 		state.turnPlayer = getOpponent(state, state.turnPlayer);
-		
+	}
+
+	export function isEnded(state: GameState): boolean {
+		return state.status === "ended";
 	}
 
 	export function isWinner(state: GameState, playerId: string): boolean {
 		if (state.status !== "ended") return false;
-		return (state.winner && state.winner === playerId) || false;
+		return (state.endResult && state.endResult.winner === playerId) || false;
 	}
+
+	export function getFreeZoneCount(state: GameState, playerId: string, location: CardLocation): number {
+		return findZones(state, location, playerId).filter(zone => zone.cards.length === 0).length;
+	}
+
+	export function getFreeColumns(state: GameState, playerId: string, location: CardLocation): Array<number> {
+		return findZones(state, location, playerId).filter(zone => zone.cards.length === 0).map(zone => zone.column);
+	}
+
+	export function isZoneEmpty(state: GameState, location: CardLocation, playerId: string, column: number): boolean {
+		return findZones(state, location, playerId, column).some(zone => zone.cards.length === 0);
+	}
+
 }
