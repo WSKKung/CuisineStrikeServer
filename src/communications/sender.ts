@@ -15,8 +15,11 @@ type OptionalCardProperties = {
 
 type CardPacket = {
 	id: string,
+	is_owned: boolean,
 	base_properties?: OptionalCardProperties,
-	properties?: OptionalCardProperties
+	properties?: OptionalCardProperties,
+	location: number,
+	column: number
 }
 
 interface UpdateGameStatePacket {
@@ -41,6 +44,12 @@ interface UpdateGameStatePacket {
 interface TurnChangePacket {
 	turn_count: number,
 	is_your_turn: boolean
+}
+
+interface IngredientSetPacket {
+	card: CardPacket,
+	column: number,
+	materials: Array<CardPacket>
 }
 
 interface DrawCardPacket {
@@ -69,49 +78,41 @@ interface GameEndPacket {
 	is_winner: boolean
 }
 
-function serializePrivateCardData(card: Card): CardPacket {
-	return {
-		id: card.id
-	};
-}
+function localizeSingleCardData(card: Card, state: GameState, playerId: string): CardPacket {
+	let isCardOwner = card.owner === playerId;
+	let isDataPublicForPlayer = false;
 
-function serializePublicCardData(card: Card): CardPacket {
-	return {
-		id: card.id,
-		base_properties: card.base_properties,
-		properties: card.properties
-	};
+	// public zone
+	if (Card.hasLocation(card, CardLocation.SERVE_ZONE | CardLocation.STANDBY_ZONE | CardLocation.TRASH)) {
+		isDataPublicForPlayer = true;
+	}
+	// private zone
+	else if (Card.hasLocation(card, CardLocation.HAND | CardLocation.RECIPE_DECK) && isCardOwner) {
+		isDataPublicForPlayer = true;
+	}
+
+	if (isDataPublicForPlayer) {
+		return {
+			id: card.id,
+			is_owned: isCardOwner,
+			base_properties: card.base_properties,
+			properties: card.properties,
+			location: Card.getLocation(card),
+			column: Card.getColumn(card)
+		};
+	}
+	else {
+		return {
+			id: card.id,
+			is_owned: isCardOwner,
+			location: Card.getLocation(card),
+			column: Card.getColumn(card)
+		};
+	}
 }
 
 function localizeCardData(cards: Array<Card>, state: GameState, playerId: string): Array<CardPacket> {
-	return cards.map(card => {
-		let isCardOwner = card.owner === playerId;
-		let isDataPublicForPlayer = false;
-
-		// public zone
-		if (Card.hasLocation(card, CardLocation.SERVE_ZONE | CardLocation.STANDBY_ZONE | CardLocation.TRASH)) {
-			isDataPublicForPlayer = true;
-		}
-		// private zone
-		else if (Card.hasLocation(card, CardLocation.HAND | CardLocation.RECIPE_DECK) && isCardOwner) {
-			isDataPublicForPlayer = true;
-		}
-
-		if (isDataPublicForPlayer) {
-			return {
-				id: card.id,
-				is_owned: isCardOwner,
-				base_properties: card.base_properties,
-				properties: card.properties
-			};
-		}
-		else {
-			return {
-				id: card.id,
-				is_owned: isCardOwner
-			};
-		}
-	});
+	return cards.map(card => localizeSingleCardData(card, state, playerId));
 }
 
 function sendToPlayer(dispatcher: MatchMessageDispatcher, opCode: number, dataObject: Object, playerId: string) {
@@ -160,7 +161,12 @@ function broadcastMatchActionEvent(state: GameState, dispatcher: MatchMessageDis
 			break;
 		case "set_ingredient":
 			Match.getActivePlayers(state).forEach(playerId => {
-				sendToPlayer(dispatcher, MatchEventCode.SET_INGREDIENT, action.data, playerId)
+				let event: IngredientSetPacket = {
+					card: localizeSingleCardData(Match.findCardByID(state, action.data.card)!, state, playerId),
+					column: action.data.column,
+					materials: localizeCardData(Match.findCardsById(state, action.data.materials), state, playerId)
+				}
+				sendToPlayer(dispatcher, MatchEventCode.SET_INGREDIENT, event, playerId)
 			});
 	}
 }
@@ -168,7 +174,8 @@ function broadcastMatchActionEvent(state: GameState, dispatcher: MatchMessageDis
 function broadcastMatchEnd(state: GameState, dispatcher: MatchMessageDispatcher) {
 	Match.getActivePlayers(state).forEach(playerId => {
 		let event = {
-			is_winner: Match.isWinner(state, playerId)
+			is_winner: Match.isWinner(state, playerId),
+			reason: Match.getEndReason(state)
 		}
 		sendToPlayer(dispatcher, MatchEventCode.END_GAME, event, playerId)
 	});

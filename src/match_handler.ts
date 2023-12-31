@@ -87,6 +87,7 @@ const matchLoop: nkruntime.MatchLoopFunction = function(ctx, logger, nk, dispatc
 						let newCard = Card.create(cardId, cardCode, id, nk);
 						deckCards.push(newCard);
 					}
+					deckCards.forEach(card => Match.addCard(gameState, card));
 					Match.moveCard(gameState, deckCards, CardLocation.MAIN_DECK, id, null, "shuffle");
 					let initialHandSize = 4;
 					let cardsToBeHand = Match.getTopCards(gameState, initialHandSize, CardLocation.MAIN_DECK, id);
@@ -124,7 +125,10 @@ const matchLoop: nkruntime.MatchLoopFunction = function(ctx, logger, nk, dispatc
 			if (players.length < 2) {
 				// make remaining player wins the game
 				gameState.status = "ended";
-				gameState.winner = players[0];
+				gameState.endResult = {
+					winners: players,
+					reason: "DISCONNECTED"
+				}
 				break;
 			}
 
@@ -144,25 +148,19 @@ const matchLoop: nkruntime.MatchLoopFunction = function(ctx, logger, nk, dispatc
 				logger.info("detected last action update")
 			}
 
-			// check win-con
-			let hasLoser = false;
-			// find winner
-			players.forEach(id => {
-				let hp = Match.getHP(gameState, id);
-				if (hp <= 0) {
-					hasLoser = true;
-				}
-				else if (hasLoser) {
-					gameState.winner = id;
-				}
-			})
-			if (hasLoser) {
+			let alivePlayer = players.filter(id => Match.getHP(gameState, id) > 0);
+			// has at least one player who is dead
+			if (alivePlayer.length < players.length) {
 				gameState.status = "ended";
+				gameState.endResult = {
+					winners: alivePlayer,
+					reason: "DEAD"
+				};
 			}
-
 			break;
 
 		case "ended":
+			logger.debug(JSON.stringify(gameState.endResult))
 			broadcastMatchEnd(gameState, matchDispatcher);
 			//players.forEach(id => sendEventGameEnded(gameState, matchDispatcher, id));
 			return null;
@@ -187,7 +185,7 @@ const matchTerminate: nkruntime.MatchTerminateFunction = function(ctx, logger, n
 	let matchDispatcher = createNakamaMatchDispatcher(dispatcher, gameState);
 	let players = Match.getActivePlayers(gameState);
 	// notify match terminate
-	broadcastMatchEnd(gameState, matchDispatcher);
+	//broadcastMatchEnd(gameState, matchDispatcher);
 	// remove all players from game state
 	players.forEach(id => delete(gameState.players[id]));
 	logger.info(`Match terminated`);

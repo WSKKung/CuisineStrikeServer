@@ -13,7 +13,7 @@ enum CardLocation {
 interface CardZone {
 	location: CardLocation,
 	column: number,
-	cards: Array<Card>
+	cards: Array<CardID>
 }
 
 namespace Field {

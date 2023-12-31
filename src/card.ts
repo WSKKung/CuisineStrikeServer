@@ -186,7 +186,10 @@ namespace Card {
 	}
 
 	export function isAbleToSetAsIngredient(card: Card): boolean {
-		return hasType(card, CardType.INGREDIENT) && (hasLocation(card, CardLocation.HAND | CardLocation.SERVE_ZONE));
+		if (getType(card) === CardType.INGREDIENT_DISH) {
+			return hasLocation(card, CardLocation.SERVE_ZONE);
+		}
+		else return hasType(card, CardType.INGREDIENT) && hasLocation(card, CardLocation.HAND);
 	}
 
 	export function getIngredientMaterialCost(card: Card): number {

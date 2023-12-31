@@ -62,19 +62,31 @@ const setIngredientHandler: ActionHandler = (state, playerId, params) => {
 	let columnToBeSet: number = params["column"];
 	let materialsId: Array<string> = params["materials"];
 
-	let cardToBeSet = Match.findCardByID(state, cardIdToBeSet, CardLocation.ANYWHERE, playerId);
+	let cardToBeSet = Match.findCardByID(state, cardIdToBeSet);
 	if (!cardIdToBeSet) {
 		return { type: "set_ingredient", owner: playerId, success: false, data: { reason: "TARGET_CARD_NOT_EXISTS" } };
 	}
 
 	// check card properties if can be set
-	if (!Card.isAbleToSetAsIngredient(cardToBeSet!)) {
+	state.log!.debug("Player attempted to set %s", JSON.stringify(cardToBeSet!))
+	if (
+		Card.getOwner(cardToBeSet!) !== playerId ||
+		!Card.isAbleToSetAsIngredient(cardToBeSet!)
+	) {
 		return { type: "set_ingredient", owner: playerId, success: false, data: { reason: "TARGET_CARD_CANNOT_BE_SET" } };
 	}
 
-	// check material cost
 	let requiredCost = Card.getIngredientMaterialCost(cardToBeSet!);
-	let materials: Array<Card> = materialsId.map(id => Match.findCardByID(state, id, CardLocation.STANDBY_ZONE, playerId)).filter(card => card !== null).map(card => card!);
+	let materials: Array<Card> = materialsId.map(id => Match.findCardByID(state, id)).filter(card => card !== null).map(card => card!);
+
+	// check if player can actually use the given materials
+	if (materials.some(card => {
+		Card.getOwner(card) !== playerId
+	})) {
+		return { type: "set_ingredient", owner: playerId, success: false, data: { reason: "MATERIALS_INVALID" } };
+	}
+
+	// check material cost
 	if (requiredCost > 0) {
 		let combinedCost: number = materials.map(card => Card.getGrade(card)).reduce((prev, cur) => prev + cur, 0);
 		// TODO: allow exceeded cost, but disallow selecting more materials than minimum (e.g. player cannot select combination of grade 3 or higher if player `can` select combination of grade 2 for grade 3 ingredient)
