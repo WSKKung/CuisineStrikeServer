@@ -26,14 +26,14 @@ interface UpdateGameStatePacket {
 	turn_count: number,
 	is_your_turn: boolean,
 	you: {
-		username: string,
+		//username: string,
 		hp: number,
 		hand: Array<CardPacket>,
 		main_deck: Array<CardPacket>,
 		recipe_deck: Array<CardPacket>
 	},
 	opponent: {
-		username: string,
+		//username: string,
 		hp: number,
 		hand: Array<CardPacket>,
 		main_deck: Array<CardPacket>,
@@ -130,14 +130,12 @@ function broadcastMatchState(state: GameState, dispatcher: MatchMessageDispatche
 			turn_count: state.turnCount,
 			is_your_turn: Match.isPlayerTurn(state, playerId),
 			you: {
-				username: Match.getPresence(state, playerId).username,
 				hp: Match.getPlayer(state, playerId).hp,
 				hand: localizeCardData(Match.getCards(state, CardLocation.HAND, playerId), state, playerId),
 				main_deck: localizeCardData(Match.getCards(state, CardLocation.MAIN_DECK, playerId), state, playerId),
 				recipe_deck: localizeCardData(Match.getCards(state, CardLocation.RECIPE_DECK, playerId), state, playerId)
 			},
 			opponent: {
-				username: Match.getPresence(state, opponent).username,
 				hp: Match.getPlayer(state, opponent).hp,
 				hand: localizeCardData(Match.getCards(state, CardLocation.HAND, opponent), state, playerId),
 				main_deck: localizeCardData(Match.getCards(state, CardLocation.MAIN_DECK, opponent), state, playerId),

@@ -4,8 +4,10 @@ interface GameResult {
 }
 
 interface GameState extends nkruntime.MatchState {
+	//TODO: Decoupling GameState from Nakama state altogether
 	log?: nkruntime.Logger,
-	players: {[id: string]: PlayerData},
+	nk?: nkruntime.Nakama,
+	players: {[id: string]: PlayerData | undefined},
 	cards: {[id: CardID]: Card},
 	status: "init" | "running" | "ended",
 	turnPlayer: string,
@@ -24,7 +26,8 @@ interface PlayerData {
 	recipeDeck: CardZone,
 	trash: CardZone,
 	serveZones: Array<CardZone>,
-	standbyZone: Array<CardZone>
+	standbyZone: Array<CardZone>,
+	online: boolean
 }
 
 function getPlayerId(presence: nkruntime.Presence): string {
@@ -48,10 +51,12 @@ namespace Match {
 			id,
 			hp: PLAYER_INITIAL_HP,
 			prevHp: PLAYER_INITIAL_HP,
+			online: false,
 			hand, mainDeck, recipeDeck, trash, serveZones, standbyZone
 		};
 	}
 
+	
 	export function createState(): GameState {
 		return {
 			playerData: {},
@@ -65,17 +70,28 @@ namespace Match {
 		};
 	}
 
+	export function newUUID(state: GameState): string {
+		if (!state.nk) {
+			return "00000000-0000-0000-0000-000000000000";
+		}
+		return state.nk.uuidv4();
+	}
+
 	export function hasPlayer(state: GameState, id: string): boolean {
 		return !!state.players[id];
 	}
 	
 	export function getPlayer(state: GameState, id: string): PlayerData {
-		return state.players[id];
+		return state.players[id]!;
 	}
 	
 	export function addPlayer(state: GameState, id: string): void {
 		let newPlayerData: PlayerData = createPlayerData(id);
 		state.players[id] = newPlayerData;
+	}
+
+	export function setPlayerOnline(state: GameState, id: string, isOnline: boolean): void {
+		state.players[id]!.online = isOnline;
 	}
 
 	export function addCard(state: GameState, card: Card): void {
@@ -91,7 +107,7 @@ namespace Match {
 	}
 	
 	export function getActivePlayers(state: GameState): Array<string> {
-		return getPlayers(state).filter(id => hasPresence(state, id));
+		return getPlayers(state).filter(id => state.players[id] && state.players[id]!.online);
 	}
 	
 	export function isPlayerTurn(state: GameState, id: string): boolean {
@@ -107,34 +123,34 @@ namespace Match {
 	}
 
 	export function getHP(state: GameState, playerId: string): number {
-		return state.players[playerId].hp;
+		return getPlayer(state, playerId).hp;
 	}
 
 	export function getPreviousHP(state: GameState, playerId: string): number {
-		return state.players[playerId].prevHp;
+		return getPlayer(state, playerId).prevHp;
 	}
 
 	export function setHP(state: GameState, playerId: string, hp: number): void {
 		if (hp < 0) hp = 0;
-		let player = state.players[playerId];
+		let player = getPlayer(state, playerId);
 		player.prevHp = player.hp;
 		player.hp = hp;
 	}
 
 	export function setPresence(state: GameState, playerId: string, presence: nkruntime.Presence): void {
-		state.players[playerId].presence = presence;
+		getPlayer(state, playerId).presence = presence;
    	}
 
 	export function removePresence(state: GameState, playerId: string): void {
-		delete state.players[playerId].presence;
+		delete getPlayer(state, playerId).presence;
    	}
 
 	export function hasPresence(state: GameState, playerId: string): boolean {
-		return !!state.players[playerId].presence;
+		return !!getPlayer(state, playerId).presence;
 	}
 
 	export function getPresence(state: GameState, playerId: string): nkruntime.Presence {
-		let presence = state.players[playerId].presence;
+		let presence = getPlayer(state, playerId).presence;
 		if (!presence) {
 			throw new Error("Player has no presence!");
 		}

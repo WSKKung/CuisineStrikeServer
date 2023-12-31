@@ -1,24 +1,35 @@
+type PlayerPresences = {[playerId: string]: nkruntime.Presence | undefined}
+
 // Match created
 const matchInit: nkruntime.MatchInitFunction = function(ctx, logger, nk, params) {
-	let state: GameState = Match.createState();
+	let gameState: GameState = Match.createState();
+	let presences: PlayerPresences = {};
 	let label = "";
 	logger.info(`Match created`)
 	return {
-		state,
+		state: {
+			gameState,
+			presences
+		},
 		tickRate: MATCH_TICK_RATE,
 		label
 	};
 };
 
 const matchJoinAttempt: nkruntime.MatchJoinAttemptFunction = function(ctx, logger, nk, dispatcher, tick, state, presence, metadata) {
-	let gameState = state as GameState
+	let gameState: GameState = state.gameState;
+	let presences: PlayerPresences = state.presences;
+
 	let joinedPlayerId = getPlayerId(presence);
 	// match is not started yet 
 	if (gameState.status === "init") {
 		// reject already joined player
 		if (Match.hasPlayer(gameState, joinedPlayerId)) {
 			return {
-				state: gameState,
+				state: {
+					gameState,
+					presences
+				},
 				accept: false,
 				rejectMessage: "Player already joined"
 			};
@@ -29,7 +40,10 @@ const matchJoinAttempt: nkruntime.MatchJoinAttemptFunction = function(ctx, logge
 		// reject other player except player that has joined before the game started
 		if (!Match.hasPlayer(gameState, joinedPlayerId)) {
 			return {
-				state: gameState,
+				state: {
+					gameState,
+					presences
+				},
 				accept: false,
 				rejectMessage: "Match already started"
 			};
@@ -38,40 +52,58 @@ const matchJoinAttempt: nkruntime.MatchJoinAttemptFunction = function(ctx, logge
 	
 	logger.info(`Player ${joinedPlayerId} attempted to join a match`)
 	return {
-		state: gameState,
+		state: {
+			gameState,
+			presences
+		},
 		accept: true
 	};
 };
 
 const matchJoin: nkruntime.MatchJoinFunction = function(ctx, logger, nk, dispatcher, tick, state, presences) {
-	let gameState = state as GameState
+	let gameState: GameState = state.gameState;
+	let currentPresences: PlayerPresences = state.presences;
 	logger.info(`Player ${presences.map(getPlayerId).join(", ")} joined a match`);
-	presences.forEach(p => {
-		let pId = getPlayerId(p);
-		Match.addPlayer(gameState, pId);
-		Match.setPresence(gameState, pId, p);
+	presences.forEach(presence => {
+		let playerId = getPlayerId(presence);
+		Match.addPlayer(gameState, playerId);
+		Match.setPlayerOnline(gameState, playerId, true);
+		currentPresences[playerId] = presence;
+		//Match.setPresence(gameState, pId, p);
 	});
 	return {
-		state: gameState
+		state: {
+			gameState,
+			presences: currentPresences
+		},
 	};
 };
 
 const matchLeave: nkruntime.MatchLeaveFunction = function(ctx, logger, nk, dispatcher, tick, state, presences) {
-	let gameState = state as GameState
+	let gameState: GameState = state.gameState;
+	let currentPresences: PlayerPresences = state.presences;
 	logger.info(`Player ${presences.map(getPlayerId).join(", ")} left a match`);
-	presences.forEach(p => {
-		let pId = getPlayerId(p);
-		Match.removePresence(gameState, pId);
+	presences.forEach(presence => {
+		let playerId = getPlayerId(presence);
+		Match.setPlayerOnline(gameState, playerId, false);
+		currentPresences[playerId] = undefined;
+		//Match.removePresence(gameState, pId);
 	});
 	return {
-		state: gameState
+		state: {
+			gameState,
+			presences: currentPresences
+		},
 	};
 };
 
 const matchLoop: nkruntime.MatchLoopFunction = function(ctx, logger, nk, dispatcher, tick, state, messages) {
-	let gameState = state as GameState;
-	gameState.log = logger
-	let matchDispatcher = createNakamaMatchDispatcher(dispatcher, gameState);
+	let gameState: GameState = state.gameState;
+	let presences: PlayerPresences = state.presences;
+	gameState.log = logger;
+	gameState.nk = nk;
+	let idGen = createNakamaIDGenerator(nk);
+	let matchDispatcher = createNakamaMatchDispatcher(dispatcher, presences);
 	let players = Match.getActivePlayers(gameState);
 	
 	switch (gameState.status) {
@@ -82,9 +114,10 @@ const matchLoop: nkruntime.MatchLoopFunction = function(ctx, logger, nk, dispatc
 				players.forEach(id => {
 					let deckCards: Array<Card> = []
 					for (let i = 0; i < 5; i++) {
-						let cardId = nk.uuidv4();
+						let cardId = idGen.uuid();
 						let cardCode = 1;
-						let newCard = Card.create(cardId, cardCode, id, nk);
+						let newCardBaseProperties = Card.loadCardBaseProperties(cardCode, nk);
+						let newCard = Card.create(cardId, cardCode, id, newCardBaseProperties);
 						deckCards.push(newCard);
 					}
 					deckCards.forEach(card => Match.addCard(gameState, card));
@@ -119,6 +152,7 @@ const matchLoop: nkruntime.MatchLoopFunction = function(ctx, logger, nk, dispatc
 
 		case "running":	
 
+
 			let previousLastAction = gameState.lastAction;
 
 			// end game if no enough player to play the game
@@ -142,7 +176,15 @@ const matchLoop: nkruntime.MatchLoopFunction = function(ctx, logger, nk, dispatc
 
 			// check if an action happened
 			let currentLastAction = gameState.lastAction;
-			if (currentLastAction && currentLastAction !== previousLastAction) {
+			// if current state now has last action
+			if (currentLastAction) {
+				// if last action before is present and has same id as current last action, thus no update
+				if (previousLastAction && currentLastAction.id === previousLastAction.id) {
+					break;
+				}
+				
+				//logger.info("prev last action: %s", previousLastAction ? JSON.stringify(previousLastAction) : "none");
+				//logger.info("cur last action: %s", currentLastAction ? JSON.stringify(currentLastAction) : "none");
 				// broadcast event from last action happened to every player
 				broadcastMatchActionEvent(gameState, matchDispatcher, currentLastAction);
 				logger.info("detected last action update")
@@ -167,30 +209,42 @@ const matchLoop: nkruntime.MatchLoopFunction = function(ctx, logger, nk, dispatc
 	}
 
 	return {
-		state: gameState
+		state: {
+			gameState,
+			presences
+		}
 	};
 };
 
 const matchSignal: nkruntime.MatchSignalFunction = function(ctx, logger, nk, dispatcher, tick, state, data) {
-	let gameState = state as GameState
+	let gameState: GameState = state.gameState;
+	let presences: PlayerPresences = state.presences;
 	logger.info(`Match signal received: ${data}`);
 	return {
-		state: gameState,
+		state: {
+			gameState,
+			presences
+		},
 		data
 	};
 }
 
 const matchTerminate: nkruntime.MatchTerminateFunction = function(ctx, logger, nk, dispatcher, tick, state, graceSeconds) {
-	let gameState = state as GameState
-	let matchDispatcher = createNakamaMatchDispatcher(dispatcher, gameState);
+	let gameState: GameState = state.gameState;
+	let presences: PlayerPresences = state.presences;
+	let matchDispatcher = createNakamaMatchDispatcher(dispatcher, presences);
 	let players = Match.getActivePlayers(gameState);
 	// notify match terminate
 	//broadcastMatchEnd(gameState, matchDispatcher);
 	// remove all players from game state
 	players.forEach(id => delete(gameState.players[id]));
+	presences = {}
 	logger.info(`Match terminated`);
 	return {
-		state: gameState
+		state: {
+			gameState,
+			presences
+		}
 	};
 };
 

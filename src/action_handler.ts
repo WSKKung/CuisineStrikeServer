@@ -5,6 +5,7 @@ type ActionType =
 	"attack"
 
 interface ActionResult {
+	id: string,
 	type: ActionType
 	owner: string
 	success: boolean
@@ -30,7 +31,7 @@ function validateParams(type: ActionType, expectedParams: { [name: string]: any 
 				valid = false;
 			}
 			if (!valid) {
-				return { type: type, owner: playerId, success: false, data: { reason: "INVALID_ARGUMENTS" } };
+				return { id: Match.newUUID(state), type: type, owner: playerId, success: false, data: { reason: "INVALID_ARGUMENTS" } };
 			}
 		}
 		return next(state, playerId, params);
@@ -39,12 +40,12 @@ function validateParams(type: ActionType, expectedParams: { [name: string]: any 
 
 const endTurnActionHandler: ActionHandler = (state, playerId, params) => {
 	if (!Match.isPlayerTurn(state, playerId)) {
-		return { type: "end_turn", owner: playerId, success: false, data: { reason: "NOT_TURN_PLAYER" } };
+		return { id: Match.newUUID(state), type: "end_turn", owner: playerId, success: false, data: { reason: "NOT_TURN_PLAYER" } };
 	}
 	
 	Match.gotoNextTurn(state);
 
-	return { type: "end_turn", owner: playerId, success: true };
+	return { id: Match.newUUID(state), type: "end_turn", owner: playerId, success: true };
 }
 
 const setIngredientParamsSchema = {
@@ -55,7 +56,7 @@ const setIngredientParamsSchema = {
 
 const setIngredientHandler: ActionHandler = (state, playerId, params) => {
 	if (!Match.isPlayerTurn(state, playerId)) {
-		return { type: "set_ingredient", owner: playerId, success: false, data: { reason: "NOT_TURN_PLAYER" } };
+		return { id: Match.newUUID(state), type: "set_ingredient", owner: playerId, success: false, data: { reason: "NOT_TURN_PLAYER" } };
 	}
 
 	let cardIdToBeSet: string = params["card"];
@@ -64,7 +65,7 @@ const setIngredientHandler: ActionHandler = (state, playerId, params) => {
 
 	let cardToBeSet = Match.findCardByID(state, cardIdToBeSet);
 	if (!cardIdToBeSet) {
-		return { type: "set_ingredient", owner: playerId, success: false, data: { reason: "TARGET_CARD_NOT_EXISTS" } };
+		return { id: Match.newUUID(state), type: "set_ingredient", owner: playerId, success: false, data: { reason: "TARGET_CARD_NOT_EXISTS" } };
 	}
 
 	// check card properties if can be set
@@ -73,7 +74,7 @@ const setIngredientHandler: ActionHandler = (state, playerId, params) => {
 		Card.getOwner(cardToBeSet!) !== playerId ||
 		!Card.isAbleToSetAsIngredient(cardToBeSet!)
 	) {
-		return { type: "set_ingredient", owner: playerId, success: false, data: { reason: "TARGET_CARD_CANNOT_BE_SET" } };
+		return { id: Match.newUUID(state),type: "set_ingredient", owner: playerId, success: false, data: { reason: "TARGET_CARD_CANNOT_BE_SET" } };
 	}
 
 	let requiredCost = Card.getIngredientMaterialCost(cardToBeSet!);
@@ -83,7 +84,7 @@ const setIngredientHandler: ActionHandler = (state, playerId, params) => {
 	if (materials.some(card => {
 		Card.getOwner(card) !== playerId
 	})) {
-		return { type: "set_ingredient", owner: playerId, success: false, data: { reason: "MATERIALS_INVALID" } };
+		return { id: Match.newUUID(state), type: "set_ingredient", owner: playerId, success: false, data: { reason: "MATERIALS_INVALID" } };
 	}
 
 	// check material cost
@@ -91,14 +92,14 @@ const setIngredientHandler: ActionHandler = (state, playerId, params) => {
 		let combinedCost: number = materials.map(card => Card.getGrade(card)).reduce((prev, cur) => prev + cur, 0);
 		// TODO: allow exceeded cost, but disallow selecting more materials than minimum (e.g. player cannot select combination of grade 3 or higher if player `can` select combination of grade 2 for grade 3 ingredient)
 		if (combinedCost === requiredCost) {
-			return { type: "set_ingredient", owner: playerId, success: false, data: { reason: "MATERIALS_INVALID" } };
+			return { id: Match.newUUID(state), type: "set_ingredient", owner: playerId, success: false, data: { reason: "MATERIALS_INVALID" } };
 		}
 	}
 
 	// check zone to set
 	// allow setting in the same column as material since material will go to trash first, making the zone available
 	if (!Match.isZoneEmpty(state, CardLocation.STANDBY_ZONE, playerId, columnToBeSet) && !materials.some(card => Card.getColumn(card) === columnToBeSet)) {
-		return { type: "set_ingredient", owner: playerId, success: false, data: { reason: "COLUMN_INVALID" } };
+		return { id: Match.newUUID(state), type: "set_ingredient", owner: playerId, success: false, data: { reason: "COLUMN_INVALID" } };
 	}
 
 	// send material to trash
@@ -107,18 +108,18 @@ const setIngredientHandler: ActionHandler = (state, playerId, params) => {
 	// place card onto the field
 	Match.moveCard(state, [ cardToBeSet! ], CardLocation.STANDBY_ZONE, playerId, columnToBeSet);
 
-	return { type: "set_ingredient", owner: playerId, success: true , data: { card: cardIdToBeSet, column: columnToBeSet, materials: materialsId } };
+	return { id: Match.newUUID(state), type: "set_ingredient", owner: playerId, success: true , data: { card: cardIdToBeSet, column: columnToBeSet, materials: materialsId } };
 }
 
 const attackActionHandler: ActionHandler = (state, playerId, params) => {
 	if (!Match.isPlayerTurn(state, playerId)) {
-		return { type: "attack", owner: playerId, success: false, data: { reason: "NOT_TURN_PLAYER" } };
+		return { id: Match.newUUID(state), type: "attack", owner: playerId, success: false, data: { reason: "NOT_TURN_PLAYER" } };
 	}
 	let opponent = Match.getOpponent(state, playerId);
 	let opponentHP = Match.getHP(state, opponent);
 	let damage = params["amount"] || 0;
 	Match.setHP(state, opponent, opponentHP - damage);
-	return { type: "attack", owner: playerId, success: true, data: { } };
+	return { id: Match.newUUID(state), type: "attack", owner: playerId, success: true, data: { } };
 }
 
 function getActionHandler(type: ActionType): ActionHandler | null {

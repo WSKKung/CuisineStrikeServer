@@ -39,7 +39,7 @@ interface Card {
 
 namespace Card {
 
-	function loadCardBaseProperties(code: number, nk: nkruntime.Nakama): CardProperties {
+	export function loadCardBaseProperties(code: number, nk: nkruntime.Nakama): CardProperties {
 		// load from cache
 		let cardPropertiesCache = nk.localcacheGet("cardProperties") || {};
 		// read database
@@ -74,26 +74,24 @@ namespace Card {
 	}
 
 
-	export function create(id: CardID, code: number, owner: string, nk: nkruntime.Nakama): Card {
-		// load card base properties from code
-		let base_properties: CardProperties = loadCardBaseProperties(code, nk);
+	export function create(id: CardID, code: number, owner: string, baseProperties: CardProperties): Card {
 		// create instance property
 		// hardcoded cloning because nakama runtime does not like object destructuring (due to global instance modification prevention, sadge)
 		let properties: CardProperties = {
 			code,
-			name: base_properties.name,
-			type: base_properties.type,
-			description: base_properties.description,
-			classes: base_properties.classes,
-			grade: base_properties.grade,
-			power: base_properties.power,
-			health: base_properties.health
+			name: baseProperties.name,
+			type: baseProperties.type,
+			description: baseProperties.description,
+			classes: baseProperties.classes,
+			grade: baseProperties.grade,
+			power: baseProperties.power,
+			health: baseProperties.health
 		};
 		// create card instance
 		let card: Card = {
 			id: id,
 			owner: owner,
-			base_properties,
+			base_properties: baseProperties,
 			properties,
 			location: CardLocation.VOID,
 			column: 0
