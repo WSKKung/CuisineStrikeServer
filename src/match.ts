@@ -235,6 +235,7 @@ namespace Match {
 					break;
 				case "shuffle":
 					targetZone.cards = targetZone.cards.concat(cards.map(c => c.id));
+					targetZone.cards = Utility.shuffle(targetZone.cards)
 					break;
 			}
 		}

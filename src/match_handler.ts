@@ -112,6 +112,7 @@ const matchLoop: nkruntime.MatchLoopFunction = function(ctx, logger, nk, dispatc
 			if (players.length >= 2) {
 				// initialize deck
 				players.forEach(id => {
+					// main deck
 					let deckCards: Array<Card> = []
 					for (let i = 0; i < 5; i++) {
 						let cardId = idGen.uuid();
@@ -120,11 +121,34 @@ const matchLoop: nkruntime.MatchLoopFunction = function(ctx, logger, nk, dispatc
 						let newCard = Card.create(cardId, cardCode, id, newCardBaseProperties);
 						deckCards.push(newCard);
 					}
+					for (let i = 0; i < 5; i++) {
+						let cardId = idGen.uuid();
+						let cardCode = 2;
+						let newCardBaseProperties = Card.loadCardBaseProperties(cardCode, nk);
+						let newCard = Card.create(cardId, cardCode, id, newCardBaseProperties);
+						deckCards.push(newCard);
+					}
 					deckCards.forEach(card => Match.addCard(gameState, card));
 					Match.moveCard(gameState, deckCards, CardLocation.MAIN_DECK, id, null, "shuffle");
+
+					// recipe deck
+					let recipeDeckCards: Array<Card> = []
+					for (let i = 0; i < 5; i++) {
+						let cardId = idGen.uuid();
+						let cardCode = 5;
+						let newCardBaseProperties = Card.loadCardBaseProperties(cardCode, nk);
+						let newCard = Card.create(cardId, cardCode, id, newCardBaseProperties);
+						recipeDeckCards.push(newCard);
+					}
+					recipeDeckCards.forEach(card => Match.addCard(gameState, card));
+					Match.moveCard(gameState, recipeDeckCards, CardLocation.RECIPE_DECK, id);
+
+					// starting hand
 					let initialHandSize = 4;
 					let cardsToBeHand = Match.getTopCards(gameState, initialHandSize, CardLocation.MAIN_DECK, id);
 					Match.moveCard(gameState, cardsToBeHand, CardLocation.HAND, id);
+
+
 				});
 
 				// initialize gamestate
