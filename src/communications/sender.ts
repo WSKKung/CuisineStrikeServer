@@ -153,19 +153,30 @@ function broadcastMatchActionEvent(state: GameState, dispatcher: MatchMessageDis
 				let event: TurnChangePacket = {
 					turn_count: state.turnCount,
 					is_your_turn: Match.isPlayerTurn(state, playerId)
-				}
-				sendToPlayer(dispatcher, MatchEventCode.CHANGE_TURN, event, playerId)
+				};
+				sendToPlayer(dispatcher, MatchEventCode.CHANGE_TURN, event, playerId);
 			});
 			break;
+
 		case "set_ingredient":
 			Match.getActivePlayers(state).forEach(playerId => {
 				let event: IngredientSetPacket = {
 					card: localizeSingleCardData(Match.findCardByID(state, action.data.card)!, state, playerId),
 					column: action.data.column,
 					materials: localizeCardData(Match.findCardsById(state, action.data.materials), state, playerId)
-				}
-				sendToPlayer(dispatcher, MatchEventCode.SET_INGREDIENT, event, playerId)
+				};
+				state.log?.debug(JSON.stringify(event));
+				sendToPlayer(dispatcher, MatchEventCode.SET_INGREDIENT, event, playerId);
 			});
+			break;
+
+		case "summon_dish":
+			Match.getActivePlayers(state).forEach(playerId => {
+				let event = {
+				};
+				sendToPlayer(dispatcher, MatchEventCode.SUMMON_DISH, event, playerId);
+			});
+			break;
 	}
 }
 

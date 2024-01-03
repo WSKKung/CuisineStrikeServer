@@ -47,15 +47,20 @@ function genericMessageHandler(senderId: string, state: GameState, dispatcher: M
 }
 
 function handlePlayerAction(senderId: string, state: GameState, dispatcher: MatchMessageDispatcher, logger: nkruntime.Logger, params: any) {
-	let actionType: string = params["type"];
-	let actionHandler: ActionHandler | null = getActionHandler(actionType as ActionType)
+	let actionType: ActionType = params["type"] as ActionType;
+	let actionHandler: ActionHandler | null = getActionHandler(actionType)
 	if (!actionHandler) {
 		return;
 	}
 
-	let result = actionHandler(state, senderId, params);
+	let result: ActionHandlerResult = actionHandler(state, senderId, params);
 	if (result.success) {
-		state.lastAction = result;
+		state.lastAction = {
+			id: Match.newUUID(state),
+			type: actionType,
+			owner: senderId,
+			data: result.data
+		};
 	}
 	else {
 		sendToPlayer(dispatcher, MatchEventCode.MESSAGE, { error: true, data: result.data }, senderId);
