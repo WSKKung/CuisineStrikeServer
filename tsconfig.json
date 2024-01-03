@@ -3,8 +3,9 @@
 		"./index.ts"
 	],
 	"include": [
-		"./src/communications/*",
-		"./src/*"
+		"./src/*",
+		"./src/cards/*",
+		"./src/communications/*"
 	],
 	"compilerOptions": {
 		"target": "es5",
