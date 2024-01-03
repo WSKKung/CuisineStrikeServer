@@ -5,6 +5,7 @@
 	"include": [
 		"./src/*",
 		"./src/cards/*",
+		"./src/test/*",
 		"./src/communications/*"
 	],
 	"compilerOptions": {

@@ -55,6 +55,9 @@ namespace Card {
 		]);
 		let cardData = (queryResult[0] && queryResult[0].value) || {};
 		let cardPropertyData = cardData[code];
+		if (!cardPropertyData) {
+			throw Error(`No card properties exists for card with code: ${code}`);
+		}
 		let baseProperties: CardProperties = cardPropertiesCache[code] || {
 			code,
 			name: cardPropertyData.name || "Unknown",

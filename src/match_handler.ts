@@ -104,6 +104,7 @@ const matchLoop: nkruntime.MatchLoopFunction = function(ctx, logger, nk, dispatc
 	gameState.nk = nk;
 	let idGen = createNakamaIDGenerator(nk);
 	let matchDispatcher = createNakamaMatchDispatcher(dispatcher, presences);
+	let gameStorageAccess = createNakamaGameStorageAccess(nk);
 	let players = Match.getActivePlayers(gameState);
 	
 	switch (gameState.status) {
@@ -113,36 +114,47 @@ const matchLoop: nkruntime.MatchLoopFunction = function(ctx, logger, nk, dispatc
 				// initialize deck
 				players.forEach(id => {
 					// main deck
-					let deckCards: Array<Card> = []
-					for (let i = 0; i < 5; i++) {
-						let cardId = idGen.uuid();
-						let cardCode = 1;
-						let newCardBaseProperties = Card.loadCardBaseProperties(cardCode, nk);
-						let newCard = Card.create(cardId, cardCode, id, newCardBaseProperties);
-						deckCards.push(newCard);
+					// TODO: Use player's selected deck from database instead
+					try {
+						let deckCards: Array<Card> = [];
+						for (let i = 0; i < 5; i++) {
+							let cardId = idGen.uuid();
+							let cardCode = 1;
+							let newCardBaseProperties = gameStorageAccess.readCardProperty(cardCode);
+							let newCard = Card.create(cardId, cardCode, id, newCardBaseProperties);
+							deckCards.push(newCard);
+						}
+						for (let i = 0; i < 5; i++) {
+							let cardId = idGen.uuid();
+							let cardCode = 2;
+							let newCardBaseProperties = gameStorageAccess.readCardProperty(cardCode);
+							let newCard = Card.create(cardId, cardCode, id, newCardBaseProperties);
+							deckCards.push(newCard);
+						}
+						deckCards.forEach(card => Match.addCard(gameState, card));
+						Match.moveCard(gameState, deckCards, CardLocation.MAIN_DECK, id, null, "shuffle");
+
+					} catch (error: any) {
+						logger.error(`Main deck initialization for player %s failed: %s`, id, error);
 					}
-					for (let i = 0; i < 5; i++) {
-						let cardId = idGen.uuid();
-						let cardCode = 2;
-						let newCardBaseProperties = Card.loadCardBaseProperties(cardCode, nk);
-						let newCard = Card.create(cardId, cardCode, id, newCardBaseProperties);
-						deckCards.push(newCard);
-					}
-					deckCards.forEach(card => Match.addCard(gameState, card));
-					Match.moveCard(gameState, deckCards, CardLocation.MAIN_DECK, id, null, "shuffle");
 
 					// recipe deck
-					let recipeDeckCards: Array<Card> = []
-					for (let i = 0; i < 5; i++) {
-						let cardId = idGen.uuid();
-						let cardCode = 5;
-						let newCardBaseProperties = Card.loadCardBaseProperties(cardCode, nk);
-						let newCard = Card.create(cardId, cardCode, id, newCardBaseProperties);
-						recipeDeckCards.push(newCard);
-					}
-					recipeDeckCards.forEach(card => Match.addCard(gameState, card));
-					Match.moveCard(gameState, recipeDeckCards, CardLocation.RECIPE_DECK, id);
+					// TODO: Use player's selected deck from database instead
+					try {
+						let recipeDeckCards: Array<Card> = [];
+						for (let i = 0; i < 5; i++) {
+							let cardId = idGen.uuid();
+							let cardCode = 5;
+							let newCardBaseProperties = gameStorageAccess.readCardProperty(cardCode);
+							let newCard = Card.create(cardId, cardCode, id, newCardBaseProperties!);
+							recipeDeckCards.push(newCard);
+						}
+						recipeDeckCards.forEach(card => Match.addCard(gameState, card));
+						Match.moveCard(gameState, recipeDeckCards, CardLocation.RECIPE_DECK, id);
 
+					} catch (error: any) {
+						logger.error(`Recipe deck initialization for player %s failed: %s`, id, error);
+					}
 					// starting hand
 					let initialHandSize = 4;
 					let cardsToBeHand = Match.getTopCards(gameState, initialHandSize, CardLocation.MAIN_DECK, id);
