@@ -1,0 +1,43 @@
+[
+	{
+		"collection": "system",
+		"key": "recipes",
+		"permission_read": 0,
+		"permission_write": 0,
+		"user_id": "00000000-0000-0000-0000-000000000000",
+		"value": {
+			"4": {
+				"slots": [
+					{
+						"min": 1,
+						"max": 2,
+						"condition": {
+							"type": "check_classes",
+							"classes": 1
+						}
+					}
+				]
+			},
+			"5": {
+				"slots": [
+					{
+						"min": 1,
+						"max": 1,
+						"condition": {
+							"type": "check_code",
+							"code": 1
+						}
+					},
+					{
+						"min": 1,
+						"max": 1,
+						"condition": {
+							"type": "check_classes",
+							"classes": 4
+						}
+					}
+				]
+			}
+		}
+	}
+]
