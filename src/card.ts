@@ -1,3 +1,5 @@
+type CardID = string
+
 // Should be stored as a bitmask
 enum CardType {
 	UNKNOWN = 0b0,
@@ -12,9 +14,10 @@ enum CardType {
 // Should be stored as a bitmask
 enum CardClass {
 	UNKNOWN = 0b0,
+	GRAIN = 0b1,
+	MEAT = 0b10,
+	BREAD = 0b100
 }
-
-type CardID = string
 
 interface CardProperties {
 	code: number,
@@ -43,30 +46,24 @@ namespace Card {
 		// load from cache
 		let cardPropertiesCache = nk.localcacheGet("cardProperties") || {};
 		// read database
-		// nk.storageRead([
-		// 	{
-		// 		collection: "cards",
-		// 		key: code.toString(),
-		// 		userId: "00000000-0000-0000-0000-000000000000"
-		// 	}
-		// ])
 		let queryResult = nk.storageRead([
 			{
-				collection: "cards",
-				key: code.toString(),
+				collection: "system",
+				key: "cards",
 				userId: "00000000-0000-0000-0000-000000000000"
 			}
 		]);
 		let cardData = (queryResult[0] && queryResult[0].value) || {};
+		let cardPropertyData = cardData[code];
 		let baseProperties: CardProperties = cardPropertiesCache[code] || {
 			code,
-			name: cardData.name || "Unknown",
-			type: cardData.type || CardType.UNKNOWN,
-			description: cardData.description || "",
-			classes: cardData.class || CardClass.UNKNOWN,
-			grade: cardData.grade || 0,
-			power: cardData.power || 0,
-			health: cardData.health || 0
+			name: cardPropertyData.name || "Unknown",
+			type: cardPropertyData.type || CardType.UNKNOWN,
+			description: cardPropertyData.description || "",
+			classes: cardPropertyData.class || CardClass.UNKNOWN,
+			grade: cardPropertyData.grade || 0,
+			power: cardPropertyData.power || 0,
+			health: cardPropertyData.health || 0
 		};
 		cardPropertiesCache[code] = baseProperties;
 		nk.localcachePut("cardProperties", cardPropertiesCache);
@@ -76,17 +73,7 @@ namespace Card {
 
 	export function create(id: CardID, code: number, owner: string, baseProperties: CardProperties): Card {
 		// create instance property
-		// hardcoded cloning because nakama runtime does not like object destructuring (due to global instance modification prevention, sadge)
-		let properties: CardProperties = {
-			code,
-			name: baseProperties.name,
-			type: baseProperties.type,
-			description: baseProperties.description,
-			classes: baseProperties.classes,
-			grade: baseProperties.grade,
-			power: baseProperties.power,
-			health: baseProperties.health
-		};
+		let properties: CardProperties = Utility.shallowClone(baseProperties);
 		// create card instance
 		let card: Card = {
 			id: id,
@@ -190,8 +177,8 @@ namespace Card {
 		else return hasType(card, CardType.INGREDIENT) && hasLocation(card, CardLocation.HAND);
 	}
 
-	export function getIngredientMaterialCost(card: Card): number {
-		return Utility.bitMaskIncludes(Card.getType(card), CardType.INGREDIENT_DISH) ? 0 : getBaseGrade(card) - 1
+	export function getIngredientMinimumMaterialCost(card: Card): number {
+		return Card.getType(card) === CardType.INGREDIENT_DISH ? 0 : getBaseGrade(card) - 1
 	}
 
 }
