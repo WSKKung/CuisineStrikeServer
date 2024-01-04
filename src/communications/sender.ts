@@ -52,6 +52,12 @@ interface IngredientSetPacket {
 	materials: Array<CardPacket>
 }
 
+interface DishSummonPacket {
+	card: CardPacket,
+	column: number,
+	materials: Array<CardPacket>
+}
+
 interface DrawCardPacket {
 	you: {
 		amount: number
@@ -172,7 +178,10 @@ function broadcastMatchActionEvent(state: GameState, dispatcher: MatchMessageDis
 
 		case "summon_dish":
 			Match.getActivePlayers(state).forEach(playerId => {
-				let event = {
+				let event: DishSummonPacket = {
+					card: localizeSingleCardData(Match.findCardByID(state, action.data.card)!, state, playerId),
+					column: action.data.column,
+					materials: localizeCardData(Match.findCardsById(state, action.data.materials), state, playerId)
 				};
 				sendToPlayer(dispatcher, MatchEventCode.SUMMON_DISH, event, playerId);
 			});
