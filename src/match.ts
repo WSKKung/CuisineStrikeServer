@@ -158,32 +158,12 @@ namespace Match {
 	}
 	// #endregion
 	
-	function findZone(state: GameState, location: CardLocation, ownerId: string, column: number): CardZone {
-		var playerData = getPlayer(state, ownerId);
-		switch (location) {
-			case CardLocation.HAND:
-				return playerData.hand;
-			case CardLocation.MAIN_DECK:
-				return playerData.mainDeck;
-			case CardLocation.RECIPE_DECK:
-				return playerData.recipeDeck;
-			case CardLocation.TRASH:
-				return playerData.trash;
-			case CardLocation.SERVE_ZONE:
-				return playerData.serveZones[column];
-			case CardLocation.STANDBY_ZONE:
-				return playerData.standbyZone[column];
-			default:
-				throw new Error("Unknown zone location, or the specified zone is a compound zone");
-		}
-	}
-
 	export function getZones(state: GameState, ownerId?: string): Array<CardZone> {
 		if (!ownerId) {
 			return Match.getActivePlayers(state).map(id => getZones(state, id)).reduce((z1, z2) => z1.concat(z2), []);
 		}
 
-		var playerData = getPlayer(state, ownerId);
+		let playerData = getPlayer(state, ownerId);
 		return [
 			playerData.hand, playerData.mainDeck, playerData.recipeDeck, playerData.trash, ...playerData.serveZones, ...playerData.standbyZone
 		];
@@ -193,10 +173,11 @@ namespace Match {
 		if (location === CardLocation.VOID) {
 			return [];
 		}
+		let filterColumn: boolean = column !== null && column !== undefined;
 		// Filter in any zone that has any location specified in the location parameter
 		// And if column parameter is specified, filter in only zones with the same column
-		var zones = getZones(state, ownerId);
-		var foundZones = zones.filter(zone => Utility.bitMaskIntersects(zone.location, location) && (!column || (column === zone.column)));
+		let zones = getZones(state, ownerId);
+		let foundZones = zones.filter(zone => Utility.bitMaskIntersects(zone.location, location) && (!filterColumn || (column === zone.column)));
 		//state.log?.debug("findZones called with location: %d, got zone with the following locations and size: %s", location, foundZones.map(z => "" + z.location + "," + z.cards.length).reduce((l1, l2) => l1 + " " + l2, ""));
 		return foundZones;
 	}
