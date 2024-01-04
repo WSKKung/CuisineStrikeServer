@@ -16,21 +16,27 @@ interface ActionHandlerResult {
 	data?: any
 }
 
-type ActionHandler = (state: GameState, playerId: string, params: any) => ActionHandlerResult
+interface ActionHandleContext {
+	storageAccess: GameStorageAccess,
+	gameState: GameState,
+	senderId: string
+}
+
+type ActionHandler = (context: ActionHandleContext, params: any) => ActionHandlerResult
 
 // middleware to validate turn player action
 function validateTurnPlayer(next: ActionHandler): ActionHandler {
-	return (state, playerId, params) => {
-		if (!Match.isPlayerTurn(state, playerId)) {
+	return (context, params) => {
+		if (!Match.isPlayerTurn(context.gameState, context.senderId)) {
 			return { success: false, data: { reason: "NOT_TURN_PLAYER" } };
 		}
-		return next(state, playerId, params);
+		return next(context, params);
 	}
 }
 
 // middleware to validate type of each properties in params object
 function validateParams(expectedParams: { [name: string]: any }, next: ActionHandler): ActionHandler {
-	return (state, playerId, params) => {
+	return (context, params) => {
 		for (let expectedKey in expectedParams) {
 			let expectedType = expectedParams[expectedKey];
 			let actualValue = params[expectedKey];
@@ -47,13 +53,13 @@ function validateParams(expectedParams: { [name: string]: any }, next: ActionHan
 				return { success: false, data: { reason: "INVALID_ARGUMENTS" } };
 			}
 		}
-		return next(state, playerId, params);
+		return next(context, params);
 	};
 }
 
-const endTurnActionHandler: ActionHandler = (state, playerId, params) => {
+const endTurnActionHandler: ActionHandler = (context, params) => {
 	
-	Match.gotoNextTurn(state);
+	Match.gotoNextTurn(context.gameState);
 
 	return { success: true };
 }
@@ -64,7 +70,9 @@ const setIngredientParamsSchema = {
 	materials: Array<string>
 };
 
-const setIngredientHandler: ActionHandler = (state, playerId, params) => {
+const setIngredientHandler: ActionHandler = (context, params) => {
+	let state = context.gameState;
+	let playerId = context.senderId;
 
 	let cardIdToBeSet: string = params["card"];
 	let columnToBeSet: number = params["column"];
@@ -96,22 +104,22 @@ const setIngredientHandler: ActionHandler = (state, playerId, params) => {
 
 	// check material cost
 	state.log!.debug("Player attempted to set %s with min cost %d", JSON.stringify(cardToBeSet!), requiredCost)
-	if (requiredCost > 0) {
-		let combinedCost: number = materials.length; //.map(card => Card.getGrade(card)).reduce((prev, cur) => prev + cur, 0);
-		// TODO: allow exceeded cost, but disallow selecting more materials than minimum (e.g. player cannot select combination of grade 3 or higher if player `can` select combination of grade 2 for grade 3 ingredient)
-		if (combinedCost !== requiredCost) {
-			return { success: false, data: { reason: "MATERIALS_INVALID" } };
-		}
+	let combinedCost: number = materials.length; //.map(card => Card.getGrade(card)).reduce((prev, cur) => prev + cur, 0);
+	// TODO: allow exceeded cost, but disallow selecting more materials than minimum (e.g. player cannot select combination of grade 3 or higher if player `can` select combination of grade 2 for grade 3 ingredient)
+	if (combinedCost !== requiredCost) {
+		return { success: false, data: { reason: "MATERIALS_INVALID" } };
 	}
 
 	// check zone to set
 	// allow setting in the same column as material since material will go to trash first, making the zone available
-	if (!Match.isZoneEmpty(state, CardLocation.STANDBY_ZONE, playerId, columnToBeSet) && !materials.some(card => Card.getColumn(card) === columnToBeSet)) {
+	if (!(Match.isZoneEmpty(state, CardLocation.STANDBY_ZONE, playerId, columnToBeSet) || materials.some(card => Card.getColumn(card) === columnToBeSet))) {
 		return { success: false, data: { reason: "COLUMN_INVALID" } };
 	}
 
 	// send material to trash
-	Match.moveCard(state, materials, CardLocation.TRASH, playerId);
+	if (materials.length > 0) {
+		Match.moveCard(state, materials, CardLocation.TRASH, playerId);
+	}
 
 	// place card onto the field
 	Match.moveCard(state, [ cardToBeSet! ], CardLocation.STANDBY_ZONE, playerId, columnToBeSet);
@@ -125,17 +133,20 @@ const dishSummonParamsSchema = {
 	materials: Array<string>
 }
 
-const dishSummonHandler: ActionHandler = (state, playerId, params) => {
+const dishSummonHandler: ActionHandler = (context, params) => {
+	let state = context.gameState;
+	let playerId = context.senderId;
 
 	let cardIdToSummon: string = params["card"];
 	let columnToSummon: number = params["column"];
 	let materialsId: Array<string> = params["materials"];
 
-	let cardToSummon = Match.findCardByID(state, cardIdToSummon);
+	let cardToSummon: Card | null = Match.findCardByID(state, cardIdToSummon);
 	if (!cardToSummon) {
 		return { success: false, data: { reason: "TARGET_CARD_NOT_EXISTS" } };
 	}
 
+	// check if player can actually summon the given cards
 	if (
 		Card.getOwner(cardToSummon) !== playerId ||
 		!Card.hasLocation(cardToSummon, CardLocation.RECIPE_DECK)
@@ -153,34 +164,33 @@ const dishSummonHandler: ActionHandler = (state, playerId, params) => {
 		return { success: false, data: { reason: "MATERIALS_INVALID" } };
 	}
 
-	let testRecipe: Recipe = {
-		slots: [
-			{
-				min: 1,
-				max: 1,
-				condition: {
-					type: "check_code",
-					code: 1
-				}
-			},
-			{
-				min: 1,
-				max: 1,
-				condition: {
-					type: "any"
-				}
-			}
-		]
-	};
+	// check zone to set
+	if (!Match.isZoneEmpty(state, CardLocation.SERVE_ZONE, playerId, columnToSummon)) {
+		return { success: false, data: { reason: "COLUMN_INVALID" } };
+	}
 
-	if (!DishSummonProcedure.checkIsRecipeComplete(testRecipe, cardToSummon, materials)) {
+	// load card recipe
+	let recipe: Recipe | null = context.storageAccess.readDishCardRecipe(Card.getCode(cardToSummon));
+	if (!recipe) {
+		return { success: false, data: { reason: "TARGET_CARD_MISSING_RECIPE" } }
+	}
+
+	if (!DishSummonProcedure.checkIsRecipeComplete(recipe, cardToSummon, materials)) {
 		return { success: false, data: { reason: "MATERIAL_INCORRECT" } };
 	}
 
-	return { success: true };
+	// Send materials to trash
+	Match.moveCard(state, materials, CardLocation.TRASH, playerId);
+
+	// place card onto the field
+	Match.moveCard(state, [ cardToSummon! ], CardLocation.SERVE_ZONE, playerId, columnToSummon);
+
+	return { success: true, data: { card: cardIdToSummon, column: columnToSummon, materials: materialsId } };
 }
 
-const attackActionHandler: ActionHandler = (state, playerId, params) => {
+const attackActionHandler: ActionHandler = (context, params) => {
+	let state = context.gameState;
+	let playerId = context.senderId;
 	let opponent = Match.getOpponent(state, playerId);
 	let opponentHP = Match.getHP(state, opponent);
 	let damage = params["amount"] || 0;

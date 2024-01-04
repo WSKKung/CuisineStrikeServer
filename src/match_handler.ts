@@ -117,16 +117,16 @@ const matchLoop: nkruntime.MatchLoopFunction = function(ctx, logger, nk, dispatc
 					// TODO: Use player's selected deck from database instead
 					try {
 						let deckCards: Array<Card> = [];
-						for (let i = 0; i < 5; i++) {
+						for (let i = 0; i < 4; i++) {
 							let cardId = idGen.uuid();
 							let cardCode = 1;
 							let newCardBaseProperties = gameStorageAccess.readCardProperty(cardCode);
 							let newCard = Card.create(cardId, cardCode, id, newCardBaseProperties);
 							deckCards.push(newCard);
 						}
-						for (let i = 0; i < 5; i++) {
+						for (let i = 0; i < 6; i++) {
 							let cardId = idGen.uuid();
-							let cardCode = 2;
+							let cardCode = 3;
 							let newCardBaseProperties = gameStorageAccess.readCardProperty(cardCode);
 							let newCard = Card.create(cardId, cardCode, id, newCardBaseProperties);
 							deckCards.push(newCard);
@@ -142,7 +142,14 @@ const matchLoop: nkruntime.MatchLoopFunction = function(ctx, logger, nk, dispatc
 					// TODO: Use player's selected deck from database instead
 					try {
 						let recipeDeckCards: Array<Card> = [];
-						for (let i = 0; i < 5; i++) {
+						for (let i = 0; i < 3; i++) {
+							let cardId = idGen.uuid();
+							let cardCode = 4;
+							let newCardBaseProperties = gameStorageAccess.readCardProperty(cardCode);
+							let newCard = Card.create(cardId, cardCode, id, newCardBaseProperties!);
+							recipeDeckCards.push(newCard);
+						}
+						for (let i = 0; i < 3; i++) {
 							let cardId = idGen.uuid();
 							let cardCode = 5;
 							let newCardBaseProperties = gameStorageAccess.readCardProperty(cardCode);
@@ -207,7 +214,7 @@ const matchLoop: nkruntime.MatchLoopFunction = function(ctx, logger, nk, dispatc
 				let senderId = getPlayerId(msg.sender);
 				let opCode = msg.opCode;
 				let dataStr = nk.binaryToString(msg.data);
-				receivePlayerMessage(gameState, senderId, opCode, dataStr, matchDispatcher, logger);
+				receivePlayerMessage(gameState, senderId, opCode, dataStr, matchDispatcher, logger, gameStorageAccess);
 			});
 
 			// check if an action happened

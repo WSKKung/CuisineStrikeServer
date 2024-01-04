@@ -17,7 +17,7 @@ enum PlayerActionCode {
 	CHECK_ATTACK_TARGET = 10
 }
 
-function receivePlayerMessage(state: GameState, senderId: string, opCode: number, msg: string, dispatcher: MatchMessageDispatcher, logger: nkruntime.Logger) {
+function receivePlayerMessage(state: GameState, senderId: string, opCode: number, msg: string, dispatcher: MatchMessageDispatcher, logger: nkruntime.Logger, storageAccess: GameStorageAccess) {
 	// parse message payload
 	let msgParams: any
 	try {
@@ -30,30 +30,35 @@ function receivePlayerMessage(state: GameState, senderId: string, opCode: number
 
 	switch (opCode) {
 		case PlayerActionCode.MESSAGE:
-			genericMessageHandler(senderId, state, dispatcher, logger, msgParams);
+			genericMessageHandler(senderId, state, dispatcher, logger, storageAccess, msgParams);
 
 			break;
 		case PlayerActionCode.COMMIT_ACTION:
-			handlePlayerAction(senderId, state, dispatcher, logger, msgParams);
+			handlePlayerAction(senderId, state, dispatcher, logger, storageAccess, msgParams);
 			break;
 	}
 }
 
-function genericMessageHandler(senderId: string, state: GameState, dispatcher: MatchMessageDispatcher, logger: nkruntime.Logger, params: any) {
+function genericMessageHandler(senderId: string, state: GameState, dispatcher: MatchMessageDispatcher, logger: nkruntime.Logger, storageAccess: GameStorageAccess, params: any) {
 	// Send user message to opponent
 	let senderOpponent = Match.getOpponent(state, senderId);
 	dispatcher.dispatch(MatchEventCode.MESSAGE, JSON.stringify(params), [senderOpponent], senderId, true);
 	return true;
 }
 
-function handlePlayerAction(senderId: string, state: GameState, dispatcher: MatchMessageDispatcher, logger: nkruntime.Logger, params: any) {
+function handlePlayerAction(senderId: string, state: GameState, dispatcher: MatchMessageDispatcher, logger: nkruntime.Logger, storageAccess: GameStorageAccess, params: any) {
 	let actionType: ActionType = params["type"] as ActionType;
 	let actionHandler: ActionHandler | null = getActionHandler(actionType)
 	if (!actionHandler) {
 		return;
 	}
 
-	let result: ActionHandlerResult = actionHandler(state, senderId, params);
+	let context: ActionHandleContext = {
+		storageAccess: storageAccess,
+		gameState: state,
+		senderId: senderId
+	};
+	let result: ActionHandlerResult = actionHandler(context, params);
 	if (result.success) {
 		state.lastAction = {
 			id: Match.newUUID(state),
