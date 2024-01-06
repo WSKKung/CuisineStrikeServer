@@ -1,14 +1,16 @@
-interface Recipe {
+import { Card } from "../card"
+
+export interface Recipe {
 	slots: RecipeSlot[]
 }
 
-interface RecipeSlot {
+export interface RecipeSlot {
 	min: number,
 	max: number,
 	condition: RecipeSlotFilter
 }
 
-type RecipeSlotFilter =
+export type RecipeSlotFilter =
 	{
 		type: "any" 
 	} |
@@ -44,23 +46,7 @@ type RecipeSlotFilter =
 		classes: number
 	}
 
-const recipe1: Recipe = {
-	slots: [
-		{
-			min: 1,
-			max: 2,
-			condition: {
-				type: "not",
-				condition: {
-					type: "check_card_type",
-					card_type: CardType.DISH
-				}
-			}
-		}
-	]
-}
-
-namespace DishSummonProcedure {
+export namespace DishSummonProcedure {
 
 	export function loadRecipeFromCardCode(code: number, nk: nkruntime.Nakama): Recipe | null {
 		// load from cache

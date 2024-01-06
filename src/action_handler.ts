@@ -1,28 +1,36 @@
-type ActionType = 
+//import Joi from "joi";
+import { GameState, Match } from "./match";
+import { Card } from "./card";
+import { GameStorageAccess } from "./wrapper";
+import { Recipe, DishSummonProcedure } from "./cards/cook_summon_procedure";
+import { CardLocation } from "./card";
+
+export type ActionType = 
 	"end_turn" |
 	"set_ingredient" |
 	"summon_dish" |
 	"attack"
 
-interface ActionResult {
+export interface ActionResult {
 	id: string,
 	type: ActionType
 	owner: string
 	data?: any
 }
 
-interface ActionHandlerResult {
+export interface ActionHandlerResult {
 	success: boolean
 	data?: any
 }
 
-interface ActionHandleContext {
+export interface ActionHandleContext {
 	storageAccess: GameStorageAccess,
 	gameState: GameState,
 	senderId: string
 }
 
-type ActionHandler = (context: ActionHandleContext, params: any) => ActionHandlerResult
+
+export type ActionHandler = (context: ActionHandleContext, params: any) => ActionHandlerResult
 
 // middleware to validate turn player action
 function validateTurnPlayer(next: ActionHandler): ActionHandler {
@@ -59,7 +67,7 @@ function validateParams(expectedParams: { [name: string]: any }, next: ActionHan
 
 const endTurnActionHandler: ActionHandler = (context, params) => {
 	
-	Match.gotoNextTurn(context.gameState);
+	Match.gotoNextTurn(context.gameState, context.senderId);
 
 	return { success: true };
 }
@@ -118,11 +126,11 @@ const setIngredientHandler: ActionHandler = (context, params) => {
 
 	// send material to trash
 	if (materials.length > 0) {
-		Match.moveCard(state, materials, CardLocation.TRASH, playerId);
+		Match.discard(state, materials, playerId);
 	}
 
 	// place card onto the field
-	Match.moveCard(state, [ cardToBeSet! ], CardLocation.STANDBY_ZONE, playerId, columnToBeSet);
+	Match.setToStandby(state, cardToBeSet!, playerId, columnToBeSet);
 
 	return { success: true , data: { card: cardIdToBeSet, column: columnToBeSet, materials: materialsId } };
 }
@@ -180,13 +188,20 @@ const dishSummonHandler: ActionHandler = (context, params) => {
 	}
 
 	// Send materials to trash
-	Match.moveCard(state, materials, CardLocation.TRASH, playerId);
+	Match.discard(state, materials, playerId);
 
 	// place card onto the field
-	Match.moveCard(state, [ cardToSummon! ], CardLocation.SERVE_ZONE, playerId, columnToSummon);
+	Match.summon(state, cardToSummon!, playerId, columnToSummon);
 
 	return { success: true, data: { card: cardIdToSummon, column: columnToSummon, materials: materialsId } };
 }
+
+/*
+const attackParamsSchema = {
+	attackingCard: "string",
+	targetCard: "string"
+}
+*/
 
 const attackActionHandler: ActionHandler = (context, params) => {
 	let state = context.gameState;
@@ -198,7 +213,7 @@ const attackActionHandler: ActionHandler = (context, params) => {
 	return { success: true, data: { } };
 }
 
-function getActionHandler(type: ActionType): ActionHandler | null {
+export function getActionHandler(type: ActionType): ActionHandler | null {
 	switch (type) {
 		case "end_turn":
 			return validateTurnPlayer(endTurnActionHandler);

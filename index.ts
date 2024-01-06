@@ -1,3 +1,6 @@
+import { matchHandler, matchmakerMatched } from "./src/match_handler";
+import { recipeCheckRPC } from "./src/test/test_rpcs";
+
 const InitModule: nkruntime.InitModule = function(ctx, logger, nk, initializer) {
 	logger.info("Typescript Runtime initializing");
 	initializer.registerRtBefore("MatchmakerAdd", beforeMacthmakerAdd);
@@ -19,3 +22,6 @@ const beforeMacthmakerAdd: nkruntime.RtBeforeHookFunction<nkruntime.EnvelopeMatc
 	envelope.matchmakerAdd.maxCount = 2;
 	return envelope;
 };
+
+// Reference InitModule to avoid it getting removed on build
+!InitModule || InitModule.bind(null);

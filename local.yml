@@ -3,4 +3,4 @@ shutdown_grace_sec: 5
 logger:
   level: "DEBUG"
 runtime:
-  js_entrypoint: "build/index.js"
+  path: "/nakama/data/modules/build"

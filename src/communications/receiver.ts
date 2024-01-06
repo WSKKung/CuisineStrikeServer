@@ -1,23 +1,10 @@
-/*
-CHAT_MESSAGE,
-PREGAME_CONFIRM,
-COMMIT_ACTION,
-SURRENDER
-*/
-enum PlayerActionCode {
-	MESSAGE = 1,
-	COMMIT_ACTION = 2,
-	SURRENDER = 3,
-	END_TURN = 4,
-	SET_INGREDIENT = 5,
-	SUMMON_DISH = 6,
-	ATTACK = 7,
-	CHECK_SET_INGREDIENT = 8,
-	CHECK_SUMMON_DISH = 9,
-	CHECK_ATTACK_TARGET = 10
-}
+import { ActionType, getActionHandler, ActionHandlerResult, ActionHandleContext, ActionHandler } from "../action_handler";
+import { GameState, Match } from "../match";
+import { MatchMessageDispatcher, GameStorageAccess } from "../wrapper";
+import { MatchEventCode, PlayerActionCode } from "./event_codes";
+import { sendToPlayer } from "./sender";
 
-function receivePlayerMessage(state: GameState, senderId: string, opCode: number, msg: string, dispatcher: MatchMessageDispatcher, logger: nkruntime.Logger, storageAccess: GameStorageAccess) {
+export function receivePlayerMessage(state: GameState, senderId: string, opCode: number, msg: string, dispatcher: MatchMessageDispatcher, logger: nkruntime.Logger, storageAccess: GameStorageAccess) {
 	// parse message payload
 	let msgParams: any
 	try {

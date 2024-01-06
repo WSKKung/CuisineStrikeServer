@@ -1,4 +1,8 @@
-const ingredientSetMaterialCheckRPC: nkruntime.RpcFunction = (ctx, logger, nk, payload) => {
+import { Card } from "../card";
+import { Recipe, DishSummonProcedure } from "../cards/cook_summon_procedure";
+import { createNakamaGameStorageAccess } from "../wrapper";
+
+export const ingredientSetMaterialCheckRPC: nkruntime.RpcFunction = (ctx, logger, nk, payload) => {
 	// create API dependecy controllers
 	let gameStorageAccess = createNakamaGameStorageAccess(nk);
 
@@ -33,7 +37,7 @@ const ingredientSetMaterialCheckRPC: nkruntime.RpcFunction = (ctx, logger, nk, p
  * @param payload
  * @returns
 */
-const recipeCheckRPC: nkruntime.RpcFunction = (ctx, logger, nk, payload) => {
+export const recipeCheckRPC: nkruntime.RpcFunction = (ctx, logger, nk, payload) => {
 	// create API dependecy controllers
 	let gameStorageAccess = createNakamaGameStorageAccess(nk);
 
@@ -70,12 +74,4 @@ const recipeCheckRPC: nkruntime.RpcFunction = (ctx, logger, nk, payload) => {
 	let recipeCheckResult = DishSummonProcedure.checkIsRecipeComplete(recipe, card, materials);
 	
 	return JSON.stringify({ result: recipeCheckResult, card, materials });
-}
-
-/**
- * Registers every testing RPC functions into the server
- * @param initializer 
- */
-function registerTestRPCs(initializer: nkruntime.Initializer) {
-	initializer.registerRpc("recipe_check", recipeCheckRPC);
 }

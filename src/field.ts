@@ -1,22 +1,13 @@
-// Should be used as bitmask
-enum CardLocation {
-	VOID = 0b0,
-	HAND = 0b1,
-	MAIN_DECK = 0b10,
-	RECIPE_DECK = 0b100,
-	SERVE_ZONE = 0b1000,
-	STANDBY_ZONE = 0b10000,
-	TRASH = 0b100000,
-	ANYWHERE = HAND | MAIN_DECK | RECIPE_DECK | SERVE_ZONE | STANDBY_ZONE | TRASH
-}
+import { CardLocation } from "./card";
+import { CardID } from "./card";
 
-interface CardZone {
+export interface CardZone {
 	location: CardLocation,
 	column: number,
 	cards: Array<CardID>
 }
 
-namespace Field {
+export namespace Field {
 	export function createZone(location: CardLocation, column?: number): CardZone {
 		let newZone: CardZone = {
 			location,

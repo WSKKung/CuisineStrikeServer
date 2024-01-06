@@ -1,7 +1,10 @@
-type CardID = string
+import { CardZone } from "./field";
+import { Utility } from "./utility";
+
+export type CardID = string;
 
 // Should be stored as a bitmask
-enum CardType {
+export enum CardType {
 	UNKNOWN = 0b0,
 	DISH = 0b1,
 	INGREDIENT = 0b10,
@@ -11,15 +14,27 @@ enum CardType {
 	INGREDIENT_DISH = 0b11, // DISH + INGREDIENT
 }
 
+// Should be used as bitmask
+export enum CardLocation {
+	VOID = 0,
+	HAND = 1,
+	MAIN_DECK = 2,
+	RECIPE_DECK = 4,
+	SERVE_ZONE = 8,
+	STANDBY_ZONE = 16,
+	TRASH = 32,
+	ANYWHERE = HAND | MAIN_DECK | RECIPE_DECK | SERVE_ZONE | STANDBY_ZONE | TRASH
+}
+
 // Should be stored as a bitmask
-enum CardClass {
+export enum CardClass {
 	UNKNOWN = 0b0,
 	GRAIN = 0b1,
 	MEAT = 0b10,
 	BREAD = 0b100
 }
 
-interface CardProperties {
+export interface CardProperties {
 	code: number,
 	name: string,
 	type: CardType,
@@ -30,7 +45,7 @@ interface CardProperties {
 	health: number,
 }
 
-interface Card {
+export interface Card {
 	id: CardID,
 	owner: string,
 	base_properties: CardProperties,
@@ -40,7 +55,7 @@ interface Card {
 	column: number
 }
 
-namespace Card {
+export namespace Card {
 
 	export function loadCardBaseProperties(code: number, nk: nkruntime.Nakama): CardProperties {
 		// load from cache
@@ -185,3 +200,4 @@ namespace Card {
 	}
 
 }
+

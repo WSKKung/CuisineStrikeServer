@@ -1,9 +1,17 @@
-interface GameResult {
+import { ActionResult } from "./action_handler";
+import { CardID, Card } from "./card";
+import { GameEvent } from "./event_queue";
+import { CardZone, Field } from "./field";
+import { CardLocation } from "./card";
+import { GameConfiguration } from "./constants";
+import { Utility } from "./utility";
+
+export interface GameResult {
 	winners: Array<string>,
 	reason: string
 }
 
-interface GameState extends nkruntime.MatchState {
+export interface GameState extends nkruntime.MatchState {
 	//TODO: Decoupling GameState from Nakama state altogether
 	log?: nkruntime.Logger,
 	nk?: nkruntime.Nakama,
@@ -13,10 +21,11 @@ interface GameState extends nkruntime.MatchState {
 	turnPlayer: string,
 	turnCount: number,
 	endResult: GameResult | null,
-	lastAction: ActionResult | null
+	lastAction: ActionResult | null,
+	eventQueue: Array<GameEvent>
 }
 
-interface PlayerData {
+export interface PlayerData {
 	id: string,
 	presence?: nkruntime.Presence,
 	hp: number,
@@ -30,11 +39,11 @@ interface PlayerData {
 	online: boolean
 }
 
-function getPlayerId(presence: nkruntime.Presence): string {
+export function getPlayerId(presence: nkruntime.Presence): string {
 	return presence.sessionId;
 }
 
-namespace Match {
+export namespace Match {
 
 	function createPlayerData(id: string): PlayerData {
 		let hand = Field.createZone(CardLocation.HAND);
@@ -43,14 +52,14 @@ namespace Match {
 		let trash = Field.createZone(CardLocation.TRASH);
 		let serveZones: Array<CardZone> = [];
 		let standbyZone: Array<CardZone> = [];
-		for (let col = 0; col < MATCH_BOARD_COLUMNS; col++) {
+		for (let col = 0; col < GameConfiguration.boardColumns; col++) {
 			serveZones.push(Field.createZone(CardLocation.SERVE_ZONE, col));
 			standbyZone.push(Field.createZone(CardLocation.STANDBY_ZONE, col));
 		}
 		return {
 			id,
-			hp: PLAYER_INITIAL_HP,
-			prevHp: PLAYER_INITIAL_HP,
+			hp: GameConfiguration.initialHP,
+			prevHp: GameConfiguration.initialHP,
 			online: false,
 			hand, mainDeck, recipeDeck, trash, serveZones, standbyZone
 		};
@@ -66,7 +75,8 @@ namespace Match {
 			turnPlayer: "",
 			turnCount: 0,
 			endResult: null,
-			lastAction: null
+			lastAction: null,
+			eventQueue: []
 		};
 	}
 
@@ -110,6 +120,14 @@ namespace Match {
 		return getPlayers(state).filter(id => state.players[id] && state.players[id]!.online);
 	}
 	
+	export function forEachPlayers(state: GameState, func: (playerId: string) => void) {
+		getActivePlayers(state).forEach(func);
+	}
+
+	export function getTurnPlayer(state: GameState): string {
+		return state.turnPlayer;
+	}
+
 	export function isPlayerTurn(state: GameState, id: string): boolean {
 		return state.turnPlayer === id;
 	}
@@ -182,12 +200,8 @@ namespace Match {
 		return foundZones;
 	}
 
-	export function moveCard(state: GameState, cards: Array<Card>, targetLocation: CardLocation, targetPlayerId: string, column?: number | null, insertLocation?: "top" | "bottom" | "shuffle") {
+	function moveCardToZone(state: GameState, cards: Array<Card>, zone: CardZone, insertLocation?: "top" | "bottom" | "shuffle") {
 		insertLocation = insertLocation || "top";
-
-		let targetZones = findZones(state, targetLocation, targetPlayerId, column);
-		let targetZone: CardZone | undefined = targetZones.length === 0 ? undefined : targetZones[0];
-
 		// remove each card from their previous zone
 		cards.forEach(card => {
 			let oldLocation = Card.getLocation(card);
@@ -200,32 +214,69 @@ namespace Match {
 		// assign new zone for each card
 		// this should be assigned before putting into zone first because if not the data will somehow not persists idkw but i want to die now
 		cards.forEach(card => {
-			card.location = (targetZone ? targetZone.location : CardLocation.VOID);
-			card.column = (targetZone ? targetZone.column : 0);
+			card.location = zone.location;
+			card.column = zone.column;
 			Match.updateCard(state, card)
 		});
 
 		// place a card in the new zone
-		if (targetZone) {
-			switch (insertLocation) {
-				case "top":
-					targetZone.cards = targetZone.cards.concat(cards.map(c => c.id));
-					break;
-				case "bottom":
-					targetZone.cards = cards.map(c => c.id).concat(targetZone.cards);
-					break;
-				case "shuffle":
-					targetZone.cards = targetZone.cards.concat(cards.map(c => c.id));
-					targetZone.cards = Utility.shuffle(targetZone.cards)
-					break;
-			}
+		switch (insertLocation) {
+			case "top":
+				zone.cards = zone.cards.concat(cards.map(c => c.id));
+				break;
+			case "bottom":
+				zone.cards = cards.map(c => c.id).concat(zone.cards);
+				break;
+			case "shuffle":
+				zone.cards = zone.cards.concat(cards.map(c => c.id));
+				zone.cards = Utility.shuffle(zone.cards)
+				break;
 		}
+	}
 
+	export function moveCard(state: GameState, cards: Array<Card>, targetLocation: CardLocation, targetPlayerId: string, column?: number | null, insertLocation?: "top" | "bottom" | "shuffle") {
+		let targetZones = findZones(state, targetLocation, targetPlayerId, column);
+		let targetZone: CardZone | undefined = targetZones.length === 0 ? undefined : targetZones[0];
+		if (targetZone) {
+			moveCardToZone(state, cards, targetZone, insertLocation);
+		}
+	}
+
+	export function discard(state: GameState, cards: Array<Card>, playerId: string) {
+		moveCardToZone(state, cards, getPlayer(state, playerId).trash);
+		// TODO: Queue send to trash event
+		state.eventQueue.push({ id: newUUID(state), sourcePlayer: playerId, type: "discard", cards: cards.map(card => card.id) });
+		
+	}
+
+	export function setToStandby(state: GameState, card: Card, playerId: string, column: number) {
+		let zone = getPlayer(state, playerId).standbyZone[column];
+		if (!zone) {
+			return;
+		}
+		moveCardToZone(state, [card], zone);
+		// TODO: Queue set event
+		state.eventQueue.push({ id: newUUID(state), sourcePlayer: playerId, type: "set", card: card.id, column: column });
+	}
+
+	export function summon(state: GameState, card: Card, playerId: string, column: number) {
+		let zone = getPlayer(state, playerId).serveZones[column];
+		if (!zone) {
+			return;
+		}
+		moveCardToZone(state, [card], zone);
+		// TODO: Queue summon event
+		state.eventQueue.push({ id: newUUID(state), sourcePlayer: playerId, type: "summon", card: card.id, column: column });
 	}
 
 	export function getCards(state: GameState, location: CardLocation, ownerId?: string, column?: number): Array<Card> {
 		let targetZones = findZones(state, location, ownerId, column);
 		return targetZones.map(zone => zone.cards).map(cards => cards.map(cardId => findCardByID(state, cardId)!)).reduce((prev, cur) => prev.concat(cur), []);
+	}
+
+	export function countCards(state: GameState, location: CardLocation, ownerId?: string, column?: number): number {
+		let targetZones = findZones(state, location, ownerId, column);
+		return targetZones.map(zone => zone.cards.length).reduce((prev, cur) => prev + cur, 0);
 		
 	}
 
@@ -269,9 +320,38 @@ namespace Match {
 		return cards.slice(-count);
 	}
 
-	export function gotoNextTurn(state: GameState): void {
+	export function drawCard(state: GameState, playerId: string, count: number): number {
+		let drewCards = getTopCards(state, count, CardLocation.MAIN_DECK, playerId);
+		// Decked out if requested top card has less card than the required count
+		if (drewCards.length < count) {
+			Match.end(state, {
+				winners: Match.getActivePlayers(state).filter(playerId => playerId !== playerId),
+				reason: "DECKED_OUT"
+			});
+			return 0;
+		}
+
+		Match.moveCard(state, drewCards, CardLocation.HAND, playerId);
+		state.eventQueue.push({ id: newUUID(state), sourcePlayer: playerId, type: "to_hand", cards: drewCards.map(card => card.id) });
+		return drewCards.length;
+	}
+
+	export function fillHand(state: GameState, playerId: string, size: number, min: number = 0): number {
+		// Draw until player has a fixed number of cards in their hand, capped at minimum by min.
+		let handSize = getPlayer(state, playerId).hand.cards.length;
+		let drawSize = Math.max(size - handSize, min);
+		return Match.drawCard(state, playerId, drawSize);
+	}
+
+	export function gotoNextTurn(state: GameState, playerId: string): void {
 		state.turnCount += 1;
 		state.turnPlayer = getOpponent(state, state.turnPlayer);
+		state.eventQueue.push({ id: newUUID(state), sourcePlayer: playerId, type: "change_turn", turn: state.turnCount, turnPlayer: state.turnPlayer});
+	}
+
+	export function end(state: GameState, result: GameResult) {
+		state.status === "ended";
+		state.endResult = result;
 	}
 
 	export function isEnded(state: GameState): boolean {
@@ -298,5 +378,6 @@ namespace Match {
 	export function isZoneEmpty(state: GameState, location: CardLocation, playerId: string, column: number): boolean {
 		return findZones(state, location, playerId, column).some(zone => zone.cards.length === 0);
 	}
+	
 
 }

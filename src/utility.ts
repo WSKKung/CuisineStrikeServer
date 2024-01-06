@@ -1,4 +1,4 @@
-namespace Utility {
+export namespace Utility {
 
 	/**
 	 * Check if a bit mask `mask1` contains some of bit flags in another bit mask `mask2`

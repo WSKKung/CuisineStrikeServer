@@ -1,13 +1,9 @@
-enum MatchEventCode {
-	MESSAGE = 1,
-	UPDATE_STATE = 2,
-	UPDATE_ACTION_POOL = 3,
-	CHANGE_TURN = 4,
-	SET_INGREDIENT = 5,
-	SUMMON_DISH = 5,
-	ATTACK = 6,
-	END_GAME = 99
-}
+import { CardProperties, Card } from "../card"
+import { GameEvent } from "../event_queue"
+import { CardLocation } from "../card";
+import { GameState, Match } from "../match"
+import { MatchMessageDispatcher } from "../wrapper"
+import { MatchEventCode } from "./event_codes";
 
 type OptionalCardProperties = {
 	[property in keyof CardProperties]?: CardProperties[property]
@@ -58,32 +54,6 @@ interface DishSummonPacket {
 	materials: Array<CardPacket>
 }
 
-interface DrawCardPacket {
-	you: {
-		amount: number
-	},
-	opponent: {
-		amount: number
-	}
-}
-
-interface AttackPacket {
-	attacker_card: string,
-	target_card?: string,
-	is_direct_attack: boolean,
-	destroyed_cards: Array<string>
-	you: {
-		hp: number
-	},
-	opponent: {
-		hp: number
-	}
-}
-
-interface GameEndPacket {
-	is_winner: boolean
-}
-
 function localizeSingleCardData(card: Card, state: GameState, playerId: string): CardPacket {
 	let isCardOwner = card.owner === playerId;
 	let isDataPublicForPlayer = false;
@@ -121,15 +91,15 @@ function localizeCardData(cards: Array<Card>, state: GameState, playerId: string
 	return cards.map(card => localizeSingleCardData(card, state, playerId));
 }
 
-function sendToPlayer(dispatcher: MatchMessageDispatcher, opCode: number, dataObject: Object, playerId: string) {
+export function sendToPlayer(dispatcher: MatchMessageDispatcher, opCode: number, dataObject: Object, playerId: string) {
 	dispatcher.dispatch(opCode, JSON.stringify(dataObject), [playerId], null, true);
 }
 
-function deferSendToPlayer(dispatcher: MatchMessageDispatcher, opCode: number, dataObject: Object, playerId: string) {
+export function deferSendToPlayer(dispatcher: MatchMessageDispatcher, opCode: number, dataObject: Object, playerId: string) {
 	dispatcher.dispatchDeferred(opCode, JSON.stringify(dataObject), [playerId], null, true);
 }
 
-function broadcastMatchState(state: GameState, dispatcher: MatchMessageDispatcher) {
+export function broadcastMatchState(state: GameState, dispatcher: MatchMessageDispatcher) {
 	Match.getActivePlayers(state).forEach(playerId => {
 		let opponent = Match.getOpponent(state, playerId);
 		let event: UpdateGameStatePacket = {
@@ -152,6 +122,62 @@ function broadcastMatchState(state: GameState, dispatcher: MatchMessageDispatche
 	});
 }
 
+export function broadcastMatchEvent(state: GameState, dispatcher: MatchMessageDispatcher, event: GameEvent) {
+	switch (event.type) {
+		case "change_turn":
+			Match.forEachPlayers(state, playerId => {
+				let packet: TurnChangePacket = {
+					turn_count: event.turn,
+					is_your_turn: playerId === event.turnPlayer
+				}
+				sendToPlayer(dispatcher, MatchEventCode.CHANGE_TURN, packet, playerId);
+			});
+			break;
+
+		case "set":
+			Match.forEachPlayers(state, playerId => {
+				let packet: IngredientSetPacket = {
+					card: localizeSingleCardData(Match.findCardByID(state, event.card)!, state, playerId),
+					column: event.column,
+					materials: []//localizeCardData(Match.findCardsById(state, event.materials), state, playerId)
+				};
+				sendToPlayer(dispatcher, MatchEventCode.SET_INGREDIENT, packet, playerId);
+			});
+			break;
+	
+		case "summon":
+			Match.forEachPlayers(state, playerId => {
+				let packet: DishSummonPacket = {
+					card: localizeSingleCardData(Match.findCardByID(state, event.card)!, state, playerId),
+					column: event.column,
+					materials: []//localizeCardData(Match.findCardsById(state, event.materials), state, playerId)
+				};
+				sendToPlayer(dispatcher, MatchEventCode.SUMMON_DISH, packet, playerId);
+			});
+			break;
+
+		case "discard":
+			Match.forEachPlayers(state, playerId => {
+				let packet = {
+					cards: localizeCardData(Match.findCardsById(state, event.cards), state, playerId)
+				};
+				sendToPlayer(dispatcher, MatchEventCode.DISCARD_CARD, packet, playerId);
+			});
+			break;
+
+		case "to_hand":
+			Match.forEachPlayers(state, playerId => {
+				let packet = {
+					cards: localizeCardData(Match.findCardsById(state, event.cards), state, playerId),
+					is_you: playerId === event.sourcePlayer
+				};
+				sendToPlayer(dispatcher, MatchEventCode.ADD_CARD_TO_HAND, packet, playerId);
+			});
+			break;
+	}
+}
+
+/*
 function broadcastMatchActionEvent(state: GameState, dispatcher: MatchMessageDispatcher, action: ActionResult) {
 	switch (action.type) {
 		case "end_turn":
@@ -188,8 +214,9 @@ function broadcastMatchActionEvent(state: GameState, dispatcher: MatchMessageDis
 			break;
 	}
 }
+*/
 
-function broadcastMatchEnd(state: GameState, dispatcher: MatchMessageDispatcher) {
+export function broadcastMatchEnd(state: GameState, dispatcher: MatchMessageDispatcher) {
 	Match.getActivePlayers(state).forEach(playerId => {
 		let event = {
 			is_winner: Match.isWinner(state, playerId),

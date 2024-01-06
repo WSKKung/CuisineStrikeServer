@@ -1,18 +1,22 @@
-interface MatchMessageDispatcher {
+import { CardProperties, CardType, CardClass } from "./card";
+import { Recipe } from "./cards/cook_summon_procedure";
+import { PlayerPresences } from "./match_handler";
+
+export interface MatchMessageDispatcher {
 	dispatch(code: number, message: string, destinationPlayerIds?: Array<string> | null, senderId?: string | null, reliable?: boolean): void,
 	dispatchDeferred(code: number, message: string, destinationPlayerIds?: Array<string> | null, senderId?: string | null, reliable?: boolean): void
 }
 
-interface IDGenerator {
+export interface IDGenerator {
 	uuid(): string
 }
 
-interface GameStorageAccess {
+export interface GameStorageAccess {
 	readCardProperty(code: number): CardProperties,
 	readDishCardRecipe(code: number): Recipe | null
 }
 
-function createNakamaMatchDispatcher(nakamaDispatcher: nkruntime.MatchDispatcher, presences: PlayerPresences): MatchMessageDispatcher {
+export function createNakamaMatchDispatcher(nakamaDispatcher: nkruntime.MatchDispatcher, presences: PlayerPresences): MatchMessageDispatcher {
 	return {
 
 		dispatch(code, message, destinationPlayerIds, senderId, reliable) {
@@ -30,7 +34,7 @@ function createNakamaMatchDispatcher(nakamaDispatcher: nkruntime.MatchDispatcher
 	};
 }
 
-function createNakamaIDGenerator(nakamaAPI: nkruntime.Nakama): IDGenerator {
+export function createNakamaIDGenerator(nakamaAPI: nkruntime.Nakama): IDGenerator {
 	return {
 		uuid() {
 			return nakamaAPI.uuidv4();
@@ -38,11 +42,9 @@ function createNakamaIDGenerator(nakamaAPI: nkruntime.Nakama): IDGenerator {
 	}
 }
 
-function createNakamaGameStorageAccess(nakamaAPI: nkruntime.Nakama): GameStorageAccess {
+export function createNakamaGameStorageAccess(nakamaAPI: nkruntime.Nakama): GameStorageAccess {
 	return {
 		readCardProperty(code) {
-			// load from cache
-			let cardPropertiesCache = nakamaAPI.localcacheGet("cardProperties") || {};
 			// read database
 			let queryResult = nakamaAPI.storageRead([
 				{
@@ -56,7 +58,7 @@ function createNakamaGameStorageAccess(nakamaAPI: nkruntime.Nakama): GameStorage
 			if (!cardPropertyData) {
 				throw Error(`No card properties exists for card with code: ${code}`);
 			}
-			let baseProperties: CardProperties = cardPropertiesCache[code] || {
+			let baseProperties: CardProperties = {
 				code,
 				name: cardPropertyData.name || "Unknown",
 				type: cardPropertyData.type || CardType.UNKNOWN,
@@ -66,14 +68,11 @@ function createNakamaGameStorageAccess(nakamaAPI: nkruntime.Nakama): GameStorage
 				power: cardPropertyData.power || 0,
 				health: cardPropertyData.health || 0
 			};
-			cardPropertiesCache[code] = baseProperties;
-			nakamaAPI.localcachePut("cardProperties", cardPropertiesCache);
+
 			return baseProperties;
 		},
 		
 		readDishCardRecipe(code) {
-			// load from cache
-			let recipeCache = nakamaAPI.localcacheGet("recipes") || {};
 			// read database
 			let queryResult = nakamaAPI.storageRead([
 				{
@@ -90,8 +89,6 @@ function createNakamaGameStorageAccess(nakamaAPI: nkruntime.Nakama): GameStorage
 				//throw Error("Card with given code does not have a recipe");
 			}
 
-			recipeCache[code] = recipeData;
-			nakamaAPI.localcachePut("recipes", recipeCache);
 			return recipeData;
 		},
 	}

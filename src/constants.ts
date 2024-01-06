@@ -1,9 +1,6 @@
-const PLAYER_INITIAL_HP = 30
-
-const MATCH_TICK_RATE = 10;
-const MATCH_BOARD_COLUMNS = 3;
-
-const MATCH_OPCODE_MSG = 1
-const MATCH_OPCODE_END_TURN = 2
-const MATCH_OPCODE_PLAY_INGREDIENT = 3
-const MATCH_OPCODE_GAME_END = 99
+export const GameConfiguration = {
+	tickRate: 10,
+	boardColumns: 3,
+	drawSizePerTurns: 5,
+	initialHP: 30
+}

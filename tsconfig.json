@@ -1,22 +1,23 @@
 {
+	"compilerOptions": {
+	  "noImplicitReturns": true,
+	  "moduleResolution": "node",
+	  "esModuleInterop": true,
+	  "removeComments": true,
+	  "noUnusedLocals": false,
+	  "target": "es5",
+	  "module": "ESNext",
+	  "strict": false,
+	},
 	"files": [
-		"./index.ts"
+	  "./node_modules/nakama-runtime/index.d.ts",
 	],
 	"include": [
-		"./src/*",
-		"./src/cards/*",
-		"./src/test/*",
-		"./src/communications/*"
+	  "index.ts",
+	  "src/**/*",
 	],
-	"compilerOptions": {
-		"target": "es5",
-		"outFile": "./build/index.js",
-		"typeRoots": [
-			"./node_modules"
-		],
-		"strict": true,
-		"esModuleInterop": true,
-		"skipLibCheck": true,
-		"forceConsistentCasingInFileNames": true
-	}
+	"exclude": [
+	  "node_modules",
+	  "build"
+	]
   }
