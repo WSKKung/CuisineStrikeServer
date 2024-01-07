@@ -181,6 +181,7 @@ export namespace Card {
 	}
 
 	export function setHealth(card: Card, amount: number): void {
+		if (amount < 0) amount = 0;
 		card.properties.health = amount;
 	}
 
