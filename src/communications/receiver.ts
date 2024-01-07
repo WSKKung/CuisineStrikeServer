@@ -1,4 +1,4 @@
-import { ActionType, getActionHandler, ActionHandlerResult, ActionHandleContext, ActionHandler } from "../action_handler";
+import { ActionType, getActionHandler, ActionHandlerResult, ActionHandleContext, ActionHandleFunction } from "../action_handler";
 import { GameState, Match } from "../match";
 import { MatchMessageDispatcher, GameStorageAccess } from "../wrapper";
 import { MatchEventCode, PlayerActionCode } from "./event_codes";
@@ -35,7 +35,7 @@ function genericMessageHandler(senderId: string, state: GameState, dispatcher: M
 
 function handlePlayerAction(senderId: string, state: GameState, dispatcher: MatchMessageDispatcher, logger: nkruntime.Logger, storageAccess: GameStorageAccess, params: any) {
 	let actionType: ActionType = params["type"] as ActionType;
-	let actionHandler: ActionHandler | null = getActionHandler(actionType)
+	let actionHandler: ActionHandleFunction | null = getActionHandler(actionType)
 	if (!actionHandler) {
 		return;
 	}

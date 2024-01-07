@@ -1,9 +1,10 @@
-//import Joi from "joi";
 import { GameState, Match } from "./match";
 import { Card } from "./card";
 import { GameStorageAccess } from "./wrapper";
 import { Recipe, DishSummonProcedure } from "./cards/cook_summon_procedure";
 import { CardLocation } from "./card";
+import zod from "zod";
+import { GameConfiguration } from "./constants";
 
 export type ActionType = 
 	"end_turn" |
@@ -29,11 +30,12 @@ export interface ActionHandleContext {
 	senderId: string
 }
 
+export type ActionHandleFunction<ParamType = any> = (context: ActionHandleContext, params: ParamType) => ActionHandlerResult
 
-export type ActionHandler = (context: ActionHandleContext, params: any) => ActionHandlerResult
+type ActionParamSchema<ParamType extends zod.ZodRawShape> = zod.AnyZodObject
 
 // middleware to validate turn player action
-function validateTurnPlayer(next: ActionHandler): ActionHandler {
+function validateTurnPlayer(next: ActionHandleFunction): ActionHandleFunction {
 	return (context, params) => {
 		if (!Match.isPlayerTurn(context.gameState, context.senderId)) {
 			return { success: false, data: { reason: "NOT_TURN_PLAYER" } };
@@ -42,49 +44,46 @@ function validateTurnPlayer(next: ActionHandler): ActionHandler {
 	}
 }
 
+
 // middleware to validate type of each properties in params object
-function validateParams(expectedParams: { [name: string]: any }, next: ActionHandler): ActionHandler {
+function validateParams<ParamType>(schema: zod.ZodType<ParamType>, next: ActionHandleFunction<ParamType>): ActionHandleFunction<ParamType> {
 	return (context, params) => {
-		for (let expectedKey in expectedParams) {
-			let expectedType = expectedParams[expectedKey];
-			let actualValue = params[expectedKey];
-			let valid = true;
-			if (typeof expectedType === "string") {
-				if (typeof actualValue !== expectedType) {
-					valid = false;
-				}
-			}
-			else if (!(actualValue instanceof expectedType)) {
-				valid = false;
-			}
-			if (!valid) {
-				return { success: false, data: { reason: "INVALID_ARGUMENTS" } };
-			}
+		try {
+			let result = schema.parse(params);
+			return next(context, result);
 		}
-		return next(context, params);
+		catch (error) {
+			return { success: false, data: { reason: "INVALID_ARGUMENT" } };
+		}
 	};
 }
 
-const endTurnActionHandler: ActionHandler = (context, params) => {
+const x = zod.object({ a: zod.string() });
+type XType = Zod.infer<typeof x>
+
+
+const endTurnActionHandler: ActionHandleFunction = (context, params) => {
 	
 	Match.gotoNextTurn(context.gameState, context.senderId);
 
 	return { success: true };
 }
 
-const setIngredientParamsSchema = {
-	card: "string",
-	column: "number",
-	materials: Array<string>
-};
+const setIngredientActionSchema = zod.object({
+	card: zod.string(),
+	column: zod.number().min(0).max(GameConfiguration.boardColumns - 1),
+	materials: zod.array(zod.string())
+})
 
-const setIngredientHandler: ActionHandler = (context, params) => {
+type SetIngredientActionParams = zod.output<typeof setIngredientActionSchema>
+
+const setIngredientHandler: ActionHandleFunction<SetIngredientActionParams> = (context, params) => {
 	let state = context.gameState;
 	let playerId = context.senderId;
 
-	let cardIdToBeSet: string = params["card"];
-	let columnToBeSet: number = params["column"];
-	let materialsId: Array<string> = params["materials"];
+	let cardIdToBeSet: string = params.card;
+	let columnToBeSet: number = params.column;
+	let materialsId: Array<string> = params.materials;
 
 	let cardToBeSet = Match.findCardByID(state, cardIdToBeSet);
 	if (!cardIdToBeSet) {
@@ -135,19 +134,20 @@ const setIngredientHandler: ActionHandler = (context, params) => {
 	return { success: true , data: { card: cardIdToBeSet, column: columnToBeSet, materials: materialsId } };
 }
 
-const dishSummonParamsSchema = {
-	card: "string",
-	column: "number",
-	materials: Array<string>
-}
+const dishSummonActionSchema = zod.object({
+	card: zod.string(),
+	column: zod.number().min(0).max(GameConfiguration.boardColumns - 1),
+	materials: zod.array(zod.string())
+})
+type DishSummonActionParams = zod.infer<typeof dishSummonActionSchema>
 
-const dishSummonHandler: ActionHandler = (context, params) => {
+const dishSummonHandler: ActionHandleFunction<DishSummonActionParams> = (context, params) => {
 	let state = context.gameState;
 	let playerId = context.senderId;
 
-	let cardIdToSummon: string = params["card"];
-	let columnToSummon: number = params["column"];
-	let materialsId: Array<string> = params["materials"];
+	let cardIdToSummon: string = params.card;
+	let columnToSummon: number = params.column;
+	let materialsId: Array<string> = params.materials;
 
 	let cardToSummon: Card | null = Match.findCardByID(state, cardIdToSummon);
 	if (!cardToSummon) {
@@ -196,33 +196,77 @@ const dishSummonHandler: ActionHandler = (context, params) => {
 	return { success: true, data: { card: cardIdToSummon, column: columnToSummon, materials: materialsId } };
 }
 
-/*
-const attackParamsSchema = {
-	attackingCard: "string",
-	targetCard: "string"
-}
-*/
+const attackActionSchema = zod.union([
+	zod.object({
+		attacking_card: zod.string(),
+		is_direct: zod.literal(true)
+	}),
+	zod.object({
+		attacking_card: zod.string(),
+		is_direct: zod.literal(false).optional(),
+		target_card: zod.string()
+	})
+]);
+type AttackActionParams = zod.infer<typeof attackActionSchema>
 
-const attackActionHandler: ActionHandler = (context, params) => {
+const attackActionHandler: ActionHandleFunction<AttackActionParams> = (context, params) => {
 	let state = context.gameState;
 	let playerId = context.senderId;
 	let opponent = Match.getOpponent(state, playerId);
-	let opponentHP = Match.getHP(state, opponent);
-	let damage = params["amount"] || 0;
-	Match.setHP(state, opponent, opponentHP - damage);
+
+	let attackingCardId: string = params.attacking_card;
+
+	let attackingCard: Card | null = Match.findCardByID(state, attackingCardId);
+	if (!attackingCard) {
+		return { success: false, data: { reason: "TARGET_CARD_NOT_EXISTS" } };
+	}
+
+	// Direct Attack
+	if (params.is_direct) {
+		let opponentHP = Match.getHP(state, opponent);
+		let damage = Card.getPower(attackingCard);
+		opponentHP -= damage;
+		Match.setHP(state, opponent, opponentHP);
+	}
+	// Battle with another card
+	else {
+		let targetCardId: string = params.target_card;
+		let targetCard: Card | null = Match.findCardByID(state, targetCardId);
+		if (!targetCard) {
+			return { success: false, data: { reason: "TARGET_CARD_NOT_EXISTS" } };
+		}
+
+		let battlingCards = [ attackingCard, targetCard ];
+		let destroyedCards: Card[] = []
+		for (let i = 0; i < 2; i++) {
+			let card = battlingCards[i];
+			let opposingCard = battlingCards[2-i]
+			let attackingPower = Card.getPower(card);
+			let opposingHP = Card.getHealth(opposingCard);
+			opposingHP -= attackingPower;
+			Card.setHealth(opposingCard, opposingHP);
+			Match.updateCard(state, opposingCard);
+			if (opposingHP === 0) {
+				destroyedCards.push(opposingCard);
+			}
+		}
+	
+		Match.discard(state, destroyedCards, playerId);
+	}
+
 	return { success: true, data: { } };
 }
 
-export function getActionHandler(type: ActionType): ActionHandler | null {
+export function getActionHandler(type: ActionType): ActionHandleFunction | null {
 	switch (type) {
 		case "end_turn":
 			return validateTurnPlayer(endTurnActionHandler);
 		case "set_ingredient":
-			return validateTurnPlayer(validateParams(setIngredientParamsSchema, setIngredientHandler));
+			return validateTurnPlayer(validateParams(setIngredientActionSchema, setIngredientHandler));
 		case "summon_dish":
-			return validateTurnPlayer(validateParams(dishSummonParamsSchema, dishSummonHandler));
+			return validateTurnPlayer(validateParams(dishSummonActionSchema, dishSummonHandler));
 		case "attack":
-			return validateTurnPlayer(attackActionHandler);
+			return validateTurnPlayer(validateParams(attackActionSchema, attackActionHandler));
 		default:
 			return null
 	}
