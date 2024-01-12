@@ -34,7 +34,7 @@ export enum CardClass {
 	BREAD = 0b100
 }
 
-export interface CardProperties {
+export type CardProperties = {
 	code: number,
 	name: string,
 	type: CardType,
@@ -43,12 +43,14 @@ export interface CardProperties {
 	grade: number,
 	power: number,
 	health: number,
+	bonusPower: number,
+	bonusHealth: number
 }
 
-export interface Card {
+export type Card = {
 	id: CardID,
 	owner: string,
-	base_properties: CardProperties,
+	baseProperties: CardProperties,
 	properties: CardProperties,
 	zone?: CardZone,
 	location: CardLocation,
@@ -57,38 +59,6 @@ export interface Card {
 
 export namespace Card {
 
-	export function loadCardBaseProperties(code: number, nk: nkruntime.Nakama): CardProperties {
-		// load from cache
-		let cardPropertiesCache = nk.localcacheGet("cardProperties") || {};
-		// read database
-		let queryResult = nk.storageRead([
-			{
-				collection: "system",
-				key: "cards",
-				userId: "00000000-0000-0000-0000-000000000000"
-			}
-		]);
-		let cardData = (queryResult[0] && queryResult[0].value) || {};
-		let cardPropertyData = cardData[code];
-		if (!cardPropertyData) {
-			throw Error(`No card properties exists for card with code: ${code}`);
-		}
-		let baseProperties: CardProperties = cardPropertiesCache[code] || {
-			code,
-			name: cardPropertyData.name || "Unknown",
-			type: cardPropertyData.type || CardType.UNKNOWN,
-			description: cardPropertyData.description || "",
-			classes: cardPropertyData.class || CardClass.UNKNOWN,
-			grade: cardPropertyData.grade || 0,
-			power: cardPropertyData.power || 0,
-			health: cardPropertyData.health || 0
-		};
-		cardPropertiesCache[code] = baseProperties;
-		nk.localcachePut("cardProperties", cardPropertiesCache);
-		return baseProperties;
-	}
-
-
 	export function create(id: CardID, code: number, owner: string, baseProperties: CardProperties): Card {
 		// create instance property
 		let properties: CardProperties = Utility.shallowClone(baseProperties);
@@ -96,7 +66,7 @@ export namespace Card {
 		let card: Card = {
 			id: id,
 			owner: owner,
-			base_properties: baseProperties,
+			baseProperties: baseProperties,
 			properties,
 			location: CardLocation.VOID,
 			column: 0
@@ -137,15 +107,23 @@ export namespace Card {
 	}
 
 	export function getBaseGrade(card: Card): number {
-		return card.base_properties.grade;
+		return card.baseProperties.grade;
 	}
 	
 	export function getBasePower(card: Card): number {
-		return card.base_properties.power;
+		return card.baseProperties.power;
 	}
 
 	export function getBaseHealth(card: Card): number {
-		return card.base_properties.health;
+		return card.baseProperties.health;
+	}
+
+	export function getBonusPower(card: Card): number {
+		return card.baseProperties.bonusPower
+	}
+
+	export function getBonusHealth(card: Card): number {
+		return card.baseProperties.bonusHealth
 	}
 
 	export function getBonusGrade(card: Card): number {
@@ -200,5 +178,8 @@ export namespace Card {
 		return Card.getType(card) === CardType.INGREDIENT_DISH ? 0 : getBaseGrade(card) - 1
 	}
 
+	export function resetProperties(card: Card) {
+		card.properties = Utility.shallowClone(card.baseProperties);
+	}
 }
 

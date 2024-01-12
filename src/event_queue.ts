@@ -3,7 +3,8 @@ import { GameState } from "./match"
 
 export type GameEvent = {
 	id: string,
-	sourcePlayer: string
+	sourcePlayer: string,
+	canceled?: boolean
 } & (
 	{
 		type: "change_turn",
@@ -28,11 +29,20 @@ export type GameEvent = {
 		card: CardID,
 		column: number
 	} |
-	{
+	({
 		type: "attack",
-		attackingCard: CardID,
-		targetCard: CardID
-	} |
+		attackingCard: CardID
+	} & (
+		{
+			directAttack: true,
+			targetPlayer: string
+		} |
+		{
+			directAttack: false,
+			targetCard: CardID
+		}
+		)
+	) |
 	{
 		type: "destroy",
 		cards: Array<CardID>
@@ -41,8 +51,31 @@ export type GameEvent = {
 		type: "damage",
 		player: string,
 		amount: number
+	} |
+	{
+		type: "update_card",
+		cards: Array<CardID>,
+		reason: EventReason
+	} |
+	{
+		type: "update_hp",
+		player: string,
+		reason: EventReason
 	}
 )
+
+export type EventReason = 
+	"init" |
+	"set_ingredient" |
+	"set_ingredient_cost" |
+	"cook_summon" |
+	"cook_summon_cost" |
+	"battle" |
+	"battle_attack" |
+	"battle_attacked" |
+	"battle_destroyed" |
+	"draw" |
+	"destroyed"
 
 export type GameEventType = GameEvent["type"]
 

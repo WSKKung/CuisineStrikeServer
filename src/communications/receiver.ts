@@ -1,4 +1,6 @@
-import { ActionType, getActionHandler, ActionHandlerResult, ActionHandleContext, ActionHandleFunction } from "../action_handler";
+import { error } from "console";
+import { getActionHandler, ActionHandlerResult, ActionHandleContext, ActionHandleFunction } from "../action_handler";
+import { ActionType } from "../action_schema";
 import { GameState, Match } from "../match";
 import { MatchMessageDispatcher, GameStorageAccess } from "../wrapper";
 import { MatchEventCode, PlayerActionCode } from "./event_codes";
@@ -46,17 +48,15 @@ function handlePlayerAction(senderId: string, state: GameState, dispatcher: Matc
 		senderId: senderId
 	};
 	let result: ActionHandlerResult = actionHandler(context, params);
-	if (result.success) {
-		state.lastAction = {
-			id: Match.newUUID(state),
-			type: actionType,
-			owner: senderId,
-			data: result.data
-		};
-	}
-	else {
+	if (!result.success) {
 		sendToPlayer(dispatcher, MatchEventCode.MESSAGE, { error: true, data: result.data }, senderId);
+		// log internal error
+		if (result.data.error) {
+			logger.error("Internal error during handle player action: %s", result.data.error.message);
+		}
+		return;
 	}
+
 	/** 
 	let actionId: string = params["id"];
 	let action = Match.findActionById(state, senderId, actionId);

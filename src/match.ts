@@ -1,6 +1,5 @@
-import { ActionResult } from "./action_handler";
 import { CardID, Card } from "./card";
-import { GameEvent } from "./event_queue";
+import { EventReason, GameEvent, GameEventListener, GameEventType } from "./event_queue";
 import { CardZone, Field } from "./field";
 import { CardLocation } from "./card";
 import { GameConfiguration } from "./constants";
@@ -17,11 +16,11 @@ export interface GameState extends nkruntime.MatchState {
 	nk?: nkruntime.Nakama,
 	players: {[id: string]: PlayerData | undefined},
 	cards: {[id: CardID]: Card},
+	attackCount: {[id: CardID]: number}
 	status: "init" | "running" | "ended",
 	turnPlayer: string,
 	turnCount: number,
 	endResult: GameResult | null,
-	lastAction: ActionResult | null,
 	eventQueue: Array<GameEvent>
 }
 
@@ -67,6 +66,7 @@ export namespace Match {
 
 	
 	export function createState(): GameState {
+		let eventListeners: {[eventType in GameEventType]: Array<GameEventListener<eventType>>};
 		return {
 			playerData: {},
 			players: {},
@@ -76,7 +76,8 @@ export namespace Match {
 			turnCount: 0,
 			endResult: null,
 			lastAction: null,
-			eventQueue: []
+			eventQueue: [],
+			attackCount: {}
 		};
 	}
 
@@ -111,7 +112,28 @@ export namespace Match {
 	export function updateCard(state: GameState, card: Card): void {
 		state.cards[card.id] = card;
 	}
+
+	export function updateCards(state: GameState, cards: Array<Card>, reason: EventReason, reasonPlayer: string) {
+		state.log?.debug("update card: %s", JSON.stringify(state.eventQueue.length));
+		cards.forEach(card => {
+			//updateCard(state, card);
+		});
+		state.eventQueue.push({ id: newUUID(state), type: "update_card", cards: cards.map(card => card.id), reason: reason, sourcePlayer: reasonPlayer })
+		state.log?.debug("update card: %s", JSON.stringify(state.eventQueue.length));
+	}
 	
+	export function damage(state: GameState, cards: Array<Card>, amount: number, reason: EventReason, reasonPlayer: string) {
+		for (let card of cards) {
+			if (!Card.hasLocation(card, CardLocation.SERVE_ZONE)) {
+				continue;
+			}
+			let remainingHealth = Card.getHealth(card) - amount;
+			Card.setHealth(card, remainingHealth);
+		}
+		Match.updateCards(state, cards, reason, reasonPlayer)
+		Match.discard(state, cards.filter(card => Card.getHealth(card) === 0), "", "destroyed");
+	}
+
 	export function getPlayers(state: GameState): Array<string> {
 		return Object.keys(state.players);
 	}
@@ -148,11 +170,12 @@ export namespace Match {
 		return getPlayer(state, playerId).prevHp;
 	}
 
-	export function setHP(state: GameState, playerId: string, hp: number): void {
+	export function setHP(state: GameState, playerId: string, hp: number, reason: EventReason, reasonPlayer: string): void {
 		if (hp < 0) hp = 0;
 		let player = getPlayer(state, playerId);
 		player.prevHp = player.hp;
 		player.hp = hp;
+		state.eventQueue.push({ id: newUUID(state), type: "update_hp", sourcePlayer: reasonPlayer, player: playerId, reason: reason })
 	}
 
 	export function setPresence(state: GameState, playerId: string, presence: nkruntime.Presence): void {
@@ -211,12 +234,10 @@ export namespace Match {
 			}
 		});
 
-		// assign new zone for each card
-		// this should be assigned before putting into zone first because if not the data will somehow not persists idkw but i want to die now
 		cards.forEach(card => {
 			card.location = zone.location;
 			card.column = zone.column;
-			Match.updateCard(state, card)
+			//Match.updateCard(state, card)
 		});
 
 		// place a card in the new zone
@@ -242,9 +263,16 @@ export namespace Match {
 		}
 	}
 
-	export function discard(state: GameState, cards: Array<Card>, playerId: string) {
-		moveCardToZone(state, cards, getPlayer(state, playerId).trash);
+	export function discard(state: GameState, cards: Array<Card>, playerId: string, reason: EventReason) {
+		if (cards.length === 0) return;
+		for (let card of cards) {
+			moveCardToZone(state, [card], getPlayer(state, Card.getOwner(card)).trash);
+			// reset
+			Card.resetProperties(card);
+		}
+		updateCards(state, cards, reason, playerId);
 		// TODO: Queue send to trash event
+		
 		state.eventQueue.push({ id: newUUID(state), sourcePlayer: playerId, type: "discard", cards: cards.map(card => card.id) });
 		
 	}
@@ -255,16 +283,23 @@ export namespace Match {
 			return;
 		}
 		moveCardToZone(state, [card], zone);
+		updateCards(state, [card], "set_ingredient", playerId);
 		// TODO: Queue set event
 		state.eventQueue.push({ id: newUUID(state), sourcePlayer: playerId, type: "set", card: card.id, column: column });
 	}
 
-	export function summon(state: GameState, card: Card, playerId: string, column: number) {
+	export function summon(state: GameState, card: Card, playerId: string, column: number, reason: EventReason) {
 		let zone = getPlayer(state, playerId).serveZones[column];
 		if (!zone) {
 			return;
 		}
+
 		moveCardToZone(state, [card], zone);
+		// allow attack on owner turn and turn 2 or onward only
+		if (Card.getOwner(card) === Match.getTurnPlayer(state) && state.turnCount > 1) {
+			resetCardAttackCount(state, card);
+		}
+		updateCards(state, [card], reason, playerId);
 		// TODO: Queue summon event
 		state.eventQueue.push({ id: newUUID(state), sourcePlayer: playerId, type: "summon", card: card.id, column: column });
 	}
@@ -332,7 +367,10 @@ export namespace Match {
 		}
 
 		Match.moveCard(state, drewCards, CardLocation.HAND, playerId);
-		state.eventQueue.push({ id: newUUID(state), sourcePlayer: playerId, type: "to_hand", cards: drewCards.map(card => card.id) });
+		state.log?.debug("draw card: %s", JSON.stringify(state.eventQueue.length));
+		updateCards(state, drewCards, "draw", playerId);
+		//state.eventQueue.push({ id: newUUID(state), sourcePlayer: playerId, type: "to_hand", cards: drewCards.map(card => card.id) });
+		state.log?.debug("draw card: %s", JSON.stringify(state.eventQueue.length));
 		return drewCards.length;
 	}
 
@@ -375,9 +413,59 @@ export namespace Match {
 		return findZones(state, location, playerId).filter(zone => zone.cards.length === 0).map(zone => zone.column);
 	}
 
-	export function isZoneEmpty(state: GameState, location: CardLocation, playerId: string, column: number): boolean {
-		return findZones(state, location, playerId, column).some(zone => zone.cards.length === 0);
+	export function isZoneEmpty(state: GameState, location: CardLocation, playerId: string, column: number | null): boolean {
+		return findZones(state, location, playerId, column).every(zone => zone.cards.length === 0);
+	}
+
+	export function isCardCanAttack(state: GameState, card: Card): boolean {
+		return (state.attackCount[card.id] !== undefined) && state.attackCount[card.id] > 0;
 	}
 	
+	export function resetPlayerCardAttackCount(state: GameState, playerId: string) {
+		getCards(state, CardLocation.SERVE_ZONE, playerId).forEach(card => {
+			resetCardAttackCount(state, card);
+		});
+	}
+	
+	export function resetCardAttackCount(state: GameState, card: Card) {
+		state.attackCount[card.id] = 1;
+	}
+
+	export function removeCardAttackCount(state: GameState, card: Card) {
+		state.attackCount[card.id] = state.attackCount[card.id] - 1;
+	}
+
+	export function battle(state: GameState, playerId: string, attackingCard: Card, targetCard: Card) {
+		if (!isCardCanAttack(state, attackingCard)) {
+			return;
+		}
+		state.eventQueue.push({ id: newUUID(state), sourcePlayer: playerId, type: "attack", attackingCard: attackingCard.id, directAttack: false, targetCard: targetCard.id });
+		/** 
+		let battlingCards = [ attackingCard, targetCard ];
+		let destroyedCards: Card[] = []
+		for (let i = 0; i < 2; i++) {
+			let card = battlingCards[i];
+			let opposingCard = battlingCards[2-i]
+			let attackingPower = Card.getPower(card);
+			let opposingHP = Card.getHealth(opposingCard);
+			opposingHP -= attackingPower;
+			Card.setHealth(opposingCard, opposingHP);
+			if (opposingHP === 0) {
+				destroyedCards.push(opposingCard);
+			}
+		}
+
+		Match.updateCards(state, [ attackingCard ], "battle", playerId);
+	`	
+		Match.discard(state, destroyedCards, playerId, "battle_destroyed");
+		*/
+	}
+
+	export function attackPlayer(state: GameState, playerId: string, attackingCard: Card, targetPlayerId: string) {
+		if (!isCardCanAttack(state, attackingCard)) {
+			return;
+		}
+		state.eventQueue.push({ id: newUUID(state), sourcePlayer: playerId, type: "attack", attackingCard: attackingCard.id, directAttack: true, targetPlayer: targetPlayerId });
+	}
 
 }

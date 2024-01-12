@@ -1,6 +1,7 @@
 import { CardProperties, CardType, CardClass } from "./card";
 import { Recipe } from "./cards/cook_summon_procedure";
 import { PlayerPresences } from "./match_handler";
+import zod from "zod";
 
 export interface MatchMessageDispatcher {
 	dispatch(code: number, message: string, destinationPlayerIds?: Array<string> | null, senderId?: string | null, reliable?: boolean): void,
@@ -42,11 +43,27 @@ export function createNakamaIDGenerator(nakamaAPI: nkruntime.Nakama): IDGenerato
 	}
 }
 
-export function createNakamaGameStorageAccess(nakamaAPI: nkruntime.Nakama): GameStorageAccess {
+export function createNakamaGameStorageAccess(nk: nkruntime.Nakama, logger: nkruntime.Logger): GameStorageAccess {
+
+	const storageDataSchemas = {
+		recipe: zod.custom<Recipe>(),
+		cardProperties: zod.object({
+			name: zod.string(),
+			description: zod.string(),
+			type: zod.number().int().min(0),
+			grade: zod.number().int().min(0).optional(),
+			classes: zod.number().int().min(0).optional(),
+			power: zod.number().int().min(0).optional(),
+			health: zod.number().int().min(0).optional(),
+			bonus_power: zod.number().int().min(0).optional(),
+			bonus_health: zod.number().int().min(0).optional()
+		})
+	}
+
 	return {
 		readCardProperty(code) {
 			// read database
-			let queryResult = nakamaAPI.storageRead([
+			let queryResult = nk.storageRead([
 				{
 					collection: "system",
 					key: "cards",
@@ -58,15 +75,22 @@ export function createNakamaGameStorageAccess(nakamaAPI: nkruntime.Nakama): Game
 			if (!cardPropertyData) {
 				throw Error(`No card properties exists for card with code: ${code}`);
 			}
+			let parseResult = storageDataSchemas.cardProperties.safeParse(cardPropertyData);
+			if (!parseResult.success) {
+				throw Error(`Invalid card properties fopr card id: ${code}, ${parseResult.error.message}`);
+			}
+			let parsed = parseResult.data;
 			let baseProperties: CardProperties = {
 				code,
-				name: cardPropertyData.name || "Unknown",
-				type: cardPropertyData.type || CardType.UNKNOWN,
-				description: cardPropertyData.description || "",
-				classes: cardPropertyData.class || CardClass.UNKNOWN,
-				grade: cardPropertyData.grade || 0,
-				power: cardPropertyData.power || 0,
-				health: cardPropertyData.health || 0
+				name: parsed.name || "Unknown",
+				description: parsed.description || "",
+				type: parsed.type || CardType.UNKNOWN,
+				classes: parsed.classes || CardClass.UNKNOWN,
+				grade: parsed.grade || 0,
+				power: parsed.power || 0,
+				health: parsed.health || 0,
+				bonusPower: parsed.bonus_power || 0,
+				bonusHealth: parsed.bonus_health || 0
 			};
 
 			return baseProperties;
@@ -74,7 +98,7 @@ export function createNakamaGameStorageAccess(nakamaAPI: nkruntime.Nakama): Game
 		
 		readDishCardRecipe(code) {
 			// read database
-			let queryResult = nakamaAPI.storageRead([
+			let queryResult = nk.storageRead([
 				{
 					collection: "system",
 					key: "recipes",
@@ -83,13 +107,14 @@ export function createNakamaGameStorageAccess(nakamaAPI: nkruntime.Nakama): Game
 			]);
 			let recipeListData = (queryResult[0] && queryResult[0].value) || {};
 			let recipeData = recipeListData[code];
-
-			if (!recipeData) {
+			let parseResult = storageDataSchemas.recipe.safeParse(recipeData);
+			if (!parseResult.success) {
+				logger.error(`Invalid recipe for card id %s: %s`, code, parseResult.error.message);
 				return null;
-				//throw Error("Card with given code does not have a recipe");
 			}
-
-			return recipeData;
+			let parsed = parseResult.data;
+			let recipe: Recipe = parsed;
+			return recipe;
 		},
 	}
 }

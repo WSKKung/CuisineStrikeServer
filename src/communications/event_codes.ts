@@ -19,5 +19,7 @@ export enum MatchEventCode {
 	SET_INGREDIENT = 5,
 	SUMMON_DISH = 6,
 	DISCARD_CARD = 7,
+	UPDATE_CARD = 8,
+	UPDATE_PLAYER_HP = 9,
 	END_GAME = 99
 }

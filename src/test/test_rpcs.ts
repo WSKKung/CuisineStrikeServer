@@ -4,7 +4,7 @@ import { createNakamaGameStorageAccess } from "../wrapper";
 
 export const ingredientSetMaterialCheckRPC: nkruntime.RpcFunction = (ctx, logger, nk, payload) => {
 	// create API dependecy controllers
-	let gameStorageAccess = createNakamaGameStorageAccess(nk);
+	let gameStorageAccess = createNakamaGameStorageAccess(nk, logger);
 
 	let data = JSON.parse(payload);
 	let cardCode: number = data.card;
@@ -39,7 +39,7 @@ export const ingredientSetMaterialCheckRPC: nkruntime.RpcFunction = (ctx, logger
 */
 export const recipeCheckRPC: nkruntime.RpcFunction = (ctx, logger, nk, payload) => {
 	// create API dependecy controllers
-	let gameStorageAccess = createNakamaGameStorageAccess(nk);
+	let gameStorageAccess = createNakamaGameStorageAccess(nk, logger);
 
 	let data = JSON.parse(payload);
 	let cardCode: number = data.card;
