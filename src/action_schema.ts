@@ -4,7 +4,7 @@ import { GameConfiguration } from "./constants";
 export type ActionType = 
 	"end_turn" |
 	"set_ingredient" |
-	"summon_dish" |
+	"cook_summon" |
 	"attack"
 
 export interface ActionResult {

@@ -242,7 +242,7 @@ export function getActionHandler(type: ActionType): ActionHandleFunction | null 
 			return validateTurnPlayer(endTurnActionHandler);
 		case "set_ingredient":
 			return validateTurnPlayer(validateParams(actionSchemas.setIngredient, setIngredientHandler));
-		case "summon_dish":
+		case "cook_summon":
 			return validateTurnPlayer(validateParams(actionSchemas.cookSummon, dishSummonHandler));
 		case "attack":
 			return validateTurnPlayer(validateParams(actionSchemas.attack, attackActionHandler));
