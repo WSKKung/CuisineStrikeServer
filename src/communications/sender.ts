@@ -101,9 +101,10 @@ export function deferSendToPlayer(dispatcher: MatchMessageDispatcher, opCode: nu
 
 export function sendCurrentMatchState(state: GameState, dispatcher: MatchMessageDispatcher, playerId: string) {
 	let opponent = Match.getOpponent(state, playerId);
-	let event: UpdateGameStatePacket = {
+	let event = {
 		turn_count: state.turnCount,
 		is_your_turn: Match.isPlayerTurn(state, playerId),
+		cards: localizeCardData(Match.getCards(state, CardLocation.ANYWHERE), state, playerId),
 		you: {
 			hp: Match.getPlayer(state, playerId).hp,
 			hand: localizeCardData(Match.getCards(state, CardLocation.HAND, playerId), state, playerId),
