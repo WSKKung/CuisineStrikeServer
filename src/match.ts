@@ -357,20 +357,20 @@ export namespace Match {
 
 	export function drawCard(state: GameState, playerId: string, count: number): number {
 		let drewCards = getTopCards(state, count, CardLocation.MAIN_DECK, playerId);
+		let drewCount = drewCards.length;
+		state.log?.debug("draw card: expected = %d, actual = %d", count, drewCount);
 		// Decked out if requested top card has less card than the required count
-		if (drewCards.length < count) {
-			Match.end(state, {
-				winners: Match.getActivePlayers(state).filter(playerId => playerId !== playerId),
+		if (drewCount < count) {
+			end(state, {
+				winners: Match.getActivePlayers(state).filter(otherPlayerId => otherPlayerId !== playerId),
 				reason: "DECKED_OUT"
 			});
 			return 0;
 		}
 
 		Match.moveCard(state, drewCards, CardLocation.HAND, playerId);
-		state.log?.debug("draw card: %s", JSON.stringify(state.eventQueue.length));
 		updateCards(state, drewCards, "draw", playerId);
 		//state.eventQueue.push({ id: newUUID(state), sourcePlayer: playerId, type: "to_hand", cards: drewCards.map(card => card.id) });
-		state.log?.debug("draw card: %s", JSON.stringify(state.eventQueue.length));
 		return drewCards.length;
 	}
 
@@ -388,7 +388,7 @@ export namespace Match {
 	}
 
 	export function end(state: GameState, result: GameResult) {
-		state.status === "ended";
+		state.status = "ended";
 		state.endResult = result;
 	}
 
