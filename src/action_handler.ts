@@ -161,11 +161,12 @@ const dishSummonHandler: ActionHandleFunction<CookSummonActionParams> = (context
 		return { success: false, data: { reason: "MATERIAL_INCORRECT" } };
 	}
 
+	// calculate extra stats
+	// This should be done before discarding materials because doing so will reset material's stats and any bonus grade will be lost
+	let grade = materials.map(Card.getGrade).reduce((x, y) => x + y, 0);
+
 	// Send materials to trash
 	Match.discard(state, materials, playerId, "cook_summon_cost");
-
-	// calculate extra stats
-	let grade = materials.map(Card.getGrade).reduce((x, y) => x + y, 0);
 
 	Card.setGrade(cardToSummon, grade);
 
