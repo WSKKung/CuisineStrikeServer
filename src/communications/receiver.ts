@@ -49,10 +49,10 @@ function handlePlayerAction(senderId: string, state: GameState, dispatcher: Matc
 	};
 	let result: ActionHandlerResult = actionHandler(context, params);
 	if (!result.success) {
-		sendToPlayer(dispatcher, MatchEventCode.MESSAGE, { error: true, data: result.data }, senderId);
+		sendToPlayer(dispatcher, MatchEventCode.ERROR, { reason: result.data.reason, message: result.data.error?.message || "(unspecified)" }, senderId);
 		// log internal error
 		if (result.data.error) {
-			logger.error("Internal error during handle player action: %s", result.data.error.message);
+			logger.error("Internal error during handle player action: %s", result.data.error?.message);
 		}
 		return;
 	}

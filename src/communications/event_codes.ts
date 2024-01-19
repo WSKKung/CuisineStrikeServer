@@ -21,5 +21,6 @@ export enum MatchEventCode {
 	DISCARD_CARD = 7,
 	UPDATE_CARD = 8,
 	UPDATE_PLAYER_HP = 9,
+	ERROR = 98,
 	END_GAME = 99
 }
