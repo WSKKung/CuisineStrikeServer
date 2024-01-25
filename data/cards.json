@@ -11,21 +11,21 @@
 				"type": 2,
 				"classes": 2,
 				"grade": 2,
-				"description": ""
+				"description": "A cow."
 			},
 			"2": {
 				"name": "Pig",
 				"type": 2,
 				"classes": 2,
 				"grade": 1,
-				"description": ""
+				"description": "A pig."
 			},
 			"3": {
 				"name": "Wheat",
 				"type": 2,
 				"classes": 1,
 				"grade": 1,
-				"description": ""
+				"description": "w"
 			},
 			"4": {
 				"name": "Bread",
@@ -36,7 +36,7 @@
 				"health": 4,
 				"bonus_power": 1,
 				"bonus_health": 2,
-				"description": ""
+				"description": "Recipe: 1-2 Wheats\n(No ability)"
 			},
 			"5": {
 				"name": "Hamburger",
@@ -47,7 +47,25 @@
 				"health": 4,
 				"bonus_power": 2,
 				"bonus_health": 1,
-				"description": ""
+				"description": "Recipe: 1 \"Cow\" + 1 Bread\n(No ability)"
+			},
+			"6": {
+				"name": "Egg",
+				"type": 2,
+				"classes": 8,
+				"grade": 1,
+				"description": "An egg."
+			},
+			"7": {
+				"name": "Bacon and Egg",
+				"type": 1,
+				"classes": 10,
+				"grade": 2,
+				"power": 2,
+				"health": 2,
+				"bonus_power": 1,
+				"bonus_health": 1,
+				"description": "Recipe: 1 Meat + 1 Egg\n(No ability)"
 			}
 		}
 	}
