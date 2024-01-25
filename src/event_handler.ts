@@ -10,35 +10,6 @@ export type GameEventHandler = {
 }
 
 export function setupBaseMechanicsEventHandler(eventHandler: GameEventHandler): GameEventHandler {
-	// Draw on start turn
-	eventHandler.addListener(createGameEventListener("change_turn", (event, context) => {
-		let turnPlayer = Match.getTurnPlayer(context.gameState);
-		Match.fillHand(context.gameState, turnPlayer, GameConfiguration.drawSizePerTurns, 1);
-		Match.resetPlayerCardAttackCount(context.gameState, turnPlayer);
-	}));
-
-
-	// attack
-	eventHandler.addListener(createGameEventListener("attack", (event, { gameState }) => {
-		if (event.canceled) return;
-
-		let attacker: Card = Match.findCardByID(gameState, event.attackingCard)!;
-		let attackerPower = Card.getPower(attacker);
-
-		Match.removeCardAttackCount(gameState, attacker);
-
-		if (event.directAttack) {
-			Match.setHP(gameState, event.targetPlayer, Match.getHP(gameState, event.targetPlayer) - attackerPower, "battle", event.sourcePlayer);
-			return;
-		}
-
-		let attackTarget: Card = Match.findCardByID(gameState, event.targetCard)!;
-		let targetPower = Card.getPower(attackTarget);
-
-		Match.damage(gameState, [attacker], targetPower, "battle", event.sourcePlayer);
-		Match.damage(gameState, [attackTarget], attackerPower, "battle", event.sourcePlayer);
-	}));
-
 	// Battle
 	return eventHandler;
 }

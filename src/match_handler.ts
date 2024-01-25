@@ -131,19 +131,13 @@ const matchLoop: nkruntime.MatchLoopFunction = function(ctx, logger, nk, dispatc
 					let deckCards: Array<Card> = [];
 					let handCards: Array<Card> = [];
 					try {
-						for (let i = 0; i < 4; i++) {
-							let cardId = idGen.uuid();
-							let cardCode = 1;
-							let newCardBaseProperties = gameStorageAccess.readCardProperty(cardCode);
-							let newCard = Card.create(cardId, cardCode, id, newCardBaseProperties);
-							deckCards.push(newCard);
-						}
-						for (let i = 0; i < 6; i++) {
-							let cardId = idGen.uuid();
-							let cardCode = 3;
-							let newCardBaseProperties = gameStorageAccess.readCardProperty(cardCode);
-							let newCard = Card.create(cardId, cardCode, id, newCardBaseProperties);
-							deckCards.push(newCard);
+						for (let cardCode of [1, 2, 3, 6]) {
+							for (let i = 0; i < 10; i++) {
+								let cardId = idGen.uuid();
+								let newCardBaseProperties = gameStorageAccess.readCardProperty(cardCode);
+								let newCard = Card.create(cardId, cardCode, id, newCardBaseProperties);
+								deckCards.push(newCard);
+							}
 						}
 
 						// shuffle
@@ -158,19 +152,13 @@ const matchLoop: nkruntime.MatchLoopFunction = function(ctx, logger, nk, dispatc
 					// TODO: Use player's selected deck from database instead
 					let recipeDeckCards: Array<Card> = [];
 					try {
-						for (let i = 0; i < 3; i++) {
-							let cardId = idGen.uuid();
-							let cardCode = 4;
-							let newCardBaseProperties = gameStorageAccess.readCardProperty(cardCode);
-							let newCard = Card.create(cardId, cardCode, id, newCardBaseProperties!);
-							recipeDeckCards.push(newCard);
-						}
-						for (let i = 0; i < 3; i++) {
-							let cardId = idGen.uuid();
-							let cardCode = 5;
-							let newCardBaseProperties = gameStorageAccess.readCardProperty(cardCode);
-							let newCard = Card.create(cardId, cardCode, id, newCardBaseProperties!);
-							recipeDeckCards.push(newCard);
+						for (let cardCode of [4, 5, 7]) {
+							for (let i = 0; i < 5; i++) {
+								let cardId = idGen.uuid();
+								let newCardBaseProperties = gameStorageAccess.readCardProperty(cardCode);
+								let newCard = Card.create(cardId, cardCode, id, newCardBaseProperties!);
+								recipeDeckCards.push(newCard);
+							}							
 						}
 						recipeDeckCards.forEach(card => Match.addCard(gameState, card));
 					} catch (error: any) {
@@ -192,13 +180,12 @@ const matchLoop: nkruntime.MatchLoopFunction = function(ctx, logger, nk, dispatc
 				eventHandler = setupBaseMechanicsEventHandler(eventHandler);
 
 				// initialize gamestate
-				gameState.turnCount = 1;
-				gameState.turnPlayer = players[0];
 				gameState.status = "running";
+				gameState.turnPlayer = Match.getRandomPlayer(gameState)
+				gameState.turnCount = 1
 				broadcastMatchState(gameState, matchDispatcher);
 
-				// initial draw
-				Match.fillHand(gameState, Match.getTurnPlayer(gameState), GameConfiguration.drawSizePerTurns, 1);
+				Match.beginTurn(gameState)
 			}
 			break;
 

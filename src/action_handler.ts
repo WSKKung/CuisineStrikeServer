@@ -52,9 +52,15 @@ function validateParams<ParamType>(schema: zod.ZodType<ParamType>, next: ActionH
 }
 
 const endTurnActionHandler: ActionHandleFunction = (context, params) => {
-	
 	Match.gotoNextTurn(context.gameState, context.senderId);
+	return { success: true };
+}
 
+const goToStrikePhaseActionHandler: ActionHandleFunction = (context, params) => {
+	if (!Match.isSetupPhase(context.gameState)) {
+		return { success: false, data: { reason: "INVALID_PHASE" } };
+	}
+	Match.goToStrikePhase(context.gameState, context.senderId);
 	return { success: true };
 }
 
@@ -123,6 +129,10 @@ const dishSummonHandler: ActionHandleFunction<CookSummonActionParams> = (context
 	let columnToSummon: number = params.column;
 	let materialsId: Array<string> = params.materials;
 
+	if (!Match.isSetupPhase(state)) {
+		return { success: false, data: { reason: "INVALID_PHASE" } };
+	}
+
 	let cardToSummon = Match.findCardByID(state, cardIdToSummon);
 	if (!cardToSummon) {
 		return { success: false, data: { reason: "TARGET_CARD_NOT_EXISTS" } };
@@ -187,6 +197,10 @@ const attackActionHandler: ActionHandleFunction<AttackActionParams> = (context, 
 	let playerId = context.senderId;
 	let opponent = Match.getOpponent(state, playerId);
 
+	if (!Match.isStrikePhase(state)) {
+		return { success: false, data: { reason: "INVALID_PHASE" } };
+	}
+
 	let attackingCardId: string = params.attacking_card;
 
 	let attackingCard: Card | null = Match.findCardByID(state, attackingCardId);
@@ -241,6 +255,8 @@ export function getActionHandler(type: ActionType): ActionHandleFunction | null 
 	switch (type) {
 		case "end_turn":
 			return validateTurnPlayer(endTurnActionHandler);
+		case "go_to_strike_phase":
+			return validateTurnPlayer(goToStrikePhaseActionHandler);
 		case "set_ingredient":
 			return validateTurnPlayer(validateParams(actionSchemas.setIngredient, setIngredientHandler));
 		case "cook_summon":

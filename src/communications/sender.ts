@@ -107,15 +107,15 @@ export function sendCurrentMatchState(state: GameState, dispatcher: MatchMessage
 		cards: localizeCardData(Match.getCards(state, CardLocation.ANYWHERE), state, playerId),
 		you: {
 			hp: Match.getPlayer(state, playerId).hp,
-			hand: localizeCardData(Match.getCards(state, CardLocation.HAND, playerId), state, playerId),
-			main_deck: localizeCardData(Match.getCards(state, CardLocation.MAIN_DECK, playerId), state, playerId),
-			recipe_deck: localizeCardData(Match.getCards(state, CardLocation.RECIPE_DECK, playerId), state, playerId)
+			//hand: localizeCardData(Match.getCards(state, CardLocation.HAND, playerId), state, playerId),
+			//main_deck: localizeCardData(Match.getCards(state, CardLocation.MAIN_DECK, playerId), state, playerId),
+			//recipe_deck: localizeCardData(Match.getCards(state, CardLocation.RECIPE_DECK, playerId), state, playerId)
 		},
 		opponent: {
 			hp: Match.getPlayer(state, opponent).hp,
-			hand: localizeCardData(Match.getCards(state, CardLocation.HAND, opponent), state, playerId),
-			main_deck: localizeCardData(Match.getCards(state, CardLocation.MAIN_DECK, opponent), state, playerId),
-			recipe_deck: localizeCardData(Match.getCards(state, CardLocation.RECIPE_DECK, opponent), state, playerId)
+			//hand: localizeCardData(Match.getCards(state, CardLocation.HAND, opponent), state, playerId),
+			//main_deck: localizeCardData(Match.getCards(state, CardLocation.MAIN_DECK, opponent), state, playerId),
+			//recipe_deck: localizeCardData(Match.getCards(state, CardLocation.RECIPE_DECK, opponent), state, playerId)
 		}
 	};
 	sendToPlayer(dispatcher, MatchEventCode.UPDATE_STATE, event, playerId)
@@ -149,6 +149,14 @@ export function broadcastMatchEvent(state: GameState, dispatcher: MatchMessageDi
 			});
 			break;
 
+		case "change_phase":
+			Match.forEachPlayers(state, playerId => {
+				let packet = {
+					phase: state.turnPhase
+				}
+				sendToPlayer(dispatcher, MatchEventCode.CHANGE_PHASE, packet, playerId);
+			});
+			break;
 
 		case "change_turn":
 			Match.forEachPlayers(state, playerId => {
@@ -179,6 +187,17 @@ export function broadcastMatchEvent(state: GameState, dispatcher: MatchMessageDi
 					materials: []//localizeCardData(Match.findCardsById(state, event.materials), state, playerId)
 				};
 				sendToPlayer(dispatcher, MatchEventCode.SUMMON_DISH, packet, playerId);
+			});
+			break;
+
+		case "attack":
+			Match.forEachPlayers(state, playerId => {
+				let packet = {
+					attacker_card: localizeSingleCardData(Match.findCardByID(state, event.attackingCard)!, state, playerId),
+					target_card: event.directAttack ? undefined : localizeSingleCardData(Match.findCardByID(state, event.targetCard)!, state, playerId),
+					is_direct_attack: event.directAttack
+				};
+				sendToPlayer(dispatcher, MatchEventCode.ATTACK, packet, playerId);
 			});
 			break;
 

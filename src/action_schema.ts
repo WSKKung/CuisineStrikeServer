@@ -3,6 +3,7 @@ import { GameConfiguration } from "./constants";
 
 export type ActionType = 
 	"end_turn" |
+	"go_to_strike_phase" |
 	"set_ingredient" |
 	"cook_summon" |
 	"attack"

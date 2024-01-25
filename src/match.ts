@@ -20,6 +20,7 @@ export interface GameState extends nkruntime.MatchState {
 	status: "init" | "running" | "ended",
 	turnPlayer: string,
 	turnCount: number,
+	turnPhase: "setup" | "strike"
 	endResult: GameResult | null,
 	eventQueue: Array<GameEvent>
 }
@@ -66,7 +67,6 @@ export namespace Match {
 
 	
 	export function createState(): GameState {
-		let eventListeners: {[eventType in GameEventType]: Array<GameEventListener<eventType>>};
 		return {
 			playerData: {},
 			players: {},
@@ -74,6 +74,7 @@ export namespace Match {
 			status: "init",
 			turnPlayer: "",
 			turnCount: 0,
+			turnPhase: "setup",
 			endResult: null,
 			lastAction: null,
 			eventQueue: [],
@@ -144,6 +145,11 @@ export namespace Match {
 	
 	export function forEachPlayers(state: GameState, func: (playerId: string) => void) {
 		getActivePlayers(state).forEach(func);
+	}
+
+	export function getRandomPlayer(state: GameState): string {
+		var players = getActivePlayers(state);
+		return players[Math.floor(Math.random() * players.length)]
 	}
 
 	export function getTurnPlayer(state: GameState): string {
@@ -296,7 +302,7 @@ export namespace Match {
 
 		moveCardToZone(state, [card], zone);
 		// allow attack on owner turn and turn 2 or onward only
-		if (Card.getOwner(card) === Match.getTurnPlayer(state) && state.turnCount > 1) {
+		if (Match.isPlayerTurn(state, Card.getOwner(card)) && state.turnCount > 1) {
 			resetCardAttackCount(state, card);
 		}
 		updateCards(state, [card], reason, playerId);
@@ -381,10 +387,31 @@ export namespace Match {
 		return Match.drawCard(state, playerId, drawSize);
 	}
 
+	export function goToSetupPhase(state: GameState, playerId: string) {
+		state.turnPhase = "setup";
+		state.eventQueue.push({ id: newUUID(state), sourcePlayer: playerId, type: "change_phase", phase: state.turnPhase })
+	}
+
+	export function goToStrikePhase(state: GameState, playerId: string) {
+		state.turnPhase = "strike";
+		state.eventQueue.push({ id: newUUID(state), sourcePlayer: playerId, type: "change_phase", phase: state.turnPhase })
+	}
+
 	export function gotoNextTurn(state: GameState, playerId: string): void {
+		let nextTurnPlayer = getOpponent(state, state.turnPlayer);
 		state.turnCount += 1;
-		state.turnPlayer = getOpponent(state, state.turnPlayer);
+		state.turnPlayer = nextTurnPlayer;
 		state.eventQueue.push({ id: newUUID(state), sourcePlayer: playerId, type: "change_turn", turn: state.turnCount, turnPlayer: state.turnPlayer});
+
+		// TODO: Add hook
+		beginTurn(state);
+	}
+
+	export function beginTurn(state: GameState): void {
+		let turnPlayer = getTurnPlayer(state);
+		goToSetupPhase(state, turnPlayer);
+		fillHand(state, turnPlayer, GameConfiguration.drawSizePerTurns, 1);
+		resetPlayerCardAttackCount(state, turnPlayer);
 	}
 
 	export function end(state: GameState, result: GameResult) {
@@ -418,21 +445,28 @@ export namespace Match {
 	}
 
 	export function isCardCanAttack(state: GameState, card: Card): boolean {
-		return (state.attackCount[card.id] !== undefined) && state.attackCount[card.id] > 0;
+		if (!isStrikePhase(state)) {
+			return false;
+		}
+		return card.attacks > 0
 	}
 	
 	export function resetPlayerCardAttackCount(state: GameState, playerId: string) {
-		getCards(state, CardLocation.SERVE_ZONE, playerId).forEach(card => {
+		let cardsToBeReset = getCards(state, CardLocation.SERVE_ZONE, playerId);
+		cardsToBeReset.forEach(card => {
 			resetCardAttackCount(state, card);
 		});
+		updateCards(state, cardsToBeReset, "gamerule", playerId);
 	}
 	
 	export function resetCardAttackCount(state: GameState, card: Card) {
-		state.attackCount[card.id] = 1;
+		card.attacks = 1;
+		updateCard(state, card)
 	}
 
 	export function removeCardAttackCount(state: GameState, card: Card) {
-		state.attackCount[card.id] = state.attackCount[card.id] - 1;
+		card.attacks -= 1;
+		updateCard(state, card)
 	}
 
 	export function battle(state: GameState, playerId: string, attackingCard: Card, targetCard: Card) {
@@ -440,25 +474,16 @@ export namespace Match {
 			return;
 		}
 		state.eventQueue.push({ id: newUUID(state), sourcePlayer: playerId, type: "attack", attackingCard: attackingCard.id, directAttack: false, targetCard: targetCard.id });
-		/** 
-		let battlingCards = [ attackingCard, targetCard ];
-		let destroyedCards: Card[] = []
-		for (let i = 0; i < 2; i++) {
-			let card = battlingCards[i];
-			let opposingCard = battlingCards[2-i]
-			let attackingPower = Card.getPower(card);
-			let opposingHP = Card.getHealth(opposingCard);
-			opposingHP -= attackingPower;
-			Card.setHealth(opposingCard, opposingHP);
-			if (opposingHP === 0) {
-				destroyedCards.push(opposingCard);
-			}
-		}
 
-		Match.updateCards(state, [ attackingCard ], "battle", playerId);
-	`	
-		Match.discard(state, destroyedCards, playerId, "battle_destroyed");
-		*/
+		// TODO: Add hook event here
+
+		let attackerPower = Card.getPower(attackingCard);
+		removeCardAttackCount(state, attackingCard);
+
+		let targetPower = Card.getPower(targetCard);
+
+		damage(state, [attackingCard], targetPower, "battle", playerId);
+		damage(state, [targetCard], attackerPower, "battle", playerId);
 	}
 
 	export function attackPlayer(state: GameState, playerId: string, attackingCard: Card, targetPlayerId: string) {
@@ -466,6 +491,19 @@ export namespace Match {
 			return;
 		}
 		state.eventQueue.push({ id: newUUID(state), sourcePlayer: playerId, type: "attack", attackingCard: attackingCard.id, directAttack: true, targetPlayer: targetPlayerId });
+		
+		// TODO: Add hook event here
+
+		let attackerPower = Card.getPower(attackingCard);
+		removeCardAttackCount(state, attackingCard);
+		Match.setHP(state, targetPlayerId, Match.getHP(state, targetPlayerId) - attackerPower, "battle", playerId);
 	}
 
+	export function isSetupPhase(state: GameState): boolean {
+		return state.turnPhase === "setup"
+	}
+
+	export function isStrikePhase(state: GameState): boolean {
+		return state.turnPhase === "strike"
+	}
 }

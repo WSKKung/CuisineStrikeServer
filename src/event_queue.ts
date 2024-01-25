@@ -12,6 +12,10 @@ export type GameEvent = {
 		turnPlayer: string
 	} |
 	{
+		type: "change_phase",
+		phase: "setup" | "strike"
+	} |
+	{
 		type: "to_hand",
 		cards: Array<CardID>
 	} |
@@ -66,6 +70,7 @@ export type GameEvent = {
 
 export type EventReason = 
 	"init" |
+	"gamerule" |
 	"set_ingredient" |
 	"set_ingredient_cost" |
 	"cook_summon" |
