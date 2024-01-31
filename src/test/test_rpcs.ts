@@ -75,3 +75,17 @@ export const recipeCheckRPC: nkruntime.RpcFunction = (ctx, logger, nk, payload) 
 	
 	return JSON.stringify({ result: recipeCheckResult, card, materials });
 }
+
+export const dumpGameStateRPC: nkruntime.RpcFunction = (ctx, logger, nk, payload) => {
+	let data = JSON.parse(payload);
+	let matchId = data.match;
+	if (!matchId) {
+		return JSON.stringify({ error: true, reason: "Missing match id parameter" })
+	}
+	let match = nk.matchGet(matchId);
+	if (!match) {
+		return JSON.stringify({ error: true, reason: "Match not found" })
+	}
+	return nk.matchSignal(match.matchId, "dump_state")
+
+}
