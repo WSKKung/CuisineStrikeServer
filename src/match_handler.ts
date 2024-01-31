@@ -8,6 +8,7 @@ import { createNakamaIDGenerator, createNakamaMatchDispatcher, createNakamaGameS
 import { GameConfiguration } from "./constants";
 import { Utility } from "./utility";
 import { GameEventHandler, createEventHandler, setupBaseMechanicsEventHandler } from "./event_handler";
+import { registerCardEffectScripts } from "./scripts";
 
 export type PlayerPresences = {[playerId: string]: nkruntime.Presence | undefined}
 
@@ -131,8 +132,19 @@ const matchLoop: nkruntime.MatchLoopFunction = function(ctx, logger, nk, dispatc
 					let deckCards: Array<Card> = [];
 					let handCards: Array<Card> = [];
 					try {
-						for (let cardCode of [1, 2, 3, 6]) {
-							for (let i = 0; i < 10; i++) {
+						// grade-1 ingredient
+						for (let cardCode of [2, 3, 6]) {
+							for (let i = 0; i < 6; i++) {
+								let cardId = idGen.uuid();
+								let newCardBaseProperties = gameStorageAccess.readCardProperty(cardCode);
+								let newCard = Card.create(cardId, cardCode, id, newCardBaseProperties);
+								deckCards.push(newCard);
+							}
+						}
+
+						// grade-2 ingredient & action
+						for (let cardCode of [1, 8, 9]) {
+							for (let i = 0; i < 4; i++) {
 								let cardId = idGen.uuid();
 								let newCardBaseProperties = gameStorageAccess.readCardProperty(cardCode);
 								let newCard = Card.create(cardId, cardCode, id, newCardBaseProperties);
@@ -179,14 +191,19 @@ const matchLoop: nkruntime.MatchLoopFunction = function(ctx, logger, nk, dispatc
 				}
 				eventHandler = setupBaseMechanicsEventHandler(eventHandler);
 
-				// initialize gamestate
-				gameState.status = "running";
-				gameState.turnPlayer = Match.getRandomPlayer(gameState)
-				gameState.turnCount = 1
-				broadcastMatchState(gameState, matchDispatcher);
-
-				Match.beginTurn(gameState)
 			}
+
+			// register effect scripts
+			registerCardEffectScripts()
+
+			// initialize gamestate
+			gameState.status = "running";
+			gameState.turnPlayer = Match.getRandomPlayer(gameState)
+			gameState.turnCount = 1
+			broadcastMatchState(gameState, matchDispatcher);
+
+			Match.beginTurn(gameState)
+			
 			break;
 
 		case "running":	
@@ -216,7 +233,7 @@ const matchLoop: nkruntime.MatchLoopFunction = function(ctx, logger, nk, dispatc
 			gameState.eventQueue.splice(0);
 			//logger.debug("t %d: processing match events checking", tick);
 			if (currentEventQueue.length > 0) {
-				logger.debug("t %d: processing match events begins", tick);
+				//logger.debug("t %d: processing match events begins", tick);
 				while (currentEventQueue.length > 0) {
 					let event: GameEvent = currentEventQueue.shift()!;
 					//gameState.eventQueue = gameState.eventQueue.filter(eq => eq.id !== event.id);
@@ -225,10 +242,10 @@ const matchLoop: nkruntime.MatchLoopFunction = function(ctx, logger, nk, dispatc
 					broadcastMatchEvent(gameState, matchDispatcher, event);
 					// handling current event
 					// new event caused here will be processed in the next tick
-					logger.debug("t %d: processing match event with type %s and id %s", tick, event.type, event.id);
-					eventHandler.handle(event, gameState);
+					//logger.debug("t %d: processing match event with type %s and id %s", tick, event.type, event.id);
+					// eventHandler.handle(event, gameState);
 				}
-				logger.debug("t %d: processing match events ends", tick);
+				//logger.debug("t %d: processing match events ends", tick);
 			}
 
 			let alivePlayer = players.filter(id => Match.getHP(gameState, id) > 0);
@@ -264,6 +281,9 @@ const matchSignal: nkruntime.MatchSignalFunction = function(ctx, logger, nk, dis
 	let presences: PlayerPresences = state.presences;
 	let eventHandler: GameEventHandler = state.eventHandler;
 	logger.info(`Match signal received: ${data}`);
+	if (data === "dump_state") {
+		data = JSON.stringify({ gameState: gameState })
+	}
 	return {
 		state: {
 			gameState,

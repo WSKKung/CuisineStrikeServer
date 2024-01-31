@@ -3,7 +3,8 @@ import { EventReason, GameEvent, GameEventListener, GameEventType } from "./even
 import { CardZone, Field } from "./field";
 import { CardLocation } from "./card";
 import { GameConfiguration } from "./constants";
-import { Utility } from "./utility";
+import { BitField, Utility } from "./utility";
+import { BUFF_ID_DAMAGED, CardBuff, CardBuffResetCondition as CardBuffResetFlag } from "./buff";
 
 export interface GameResult {
 	winners: Array<string>,
@@ -16,11 +17,12 @@ export interface GameState extends nkruntime.MatchState {
 	nk?: nkruntime.Nakama,
 	players: {[id: string]: PlayerData | undefined},
 	cards: {[id: CardID]: Card},
+	buffs: {[id: CardID]: Array<CardBuff>},
 	attackCount: {[id: CardID]: number}
 	status: "init" | "running" | "ended",
 	turnPlayer: string,
 	turnCount: number,
-	turnPhase: "setup" | "strike"
+	turnPhase: TurnPhase
 	endResult: GameResult | null,
 	eventQueue: Array<GameEvent>
 }
@@ -36,8 +38,16 @@ export interface PlayerData {
 	trash: CardZone,
 	serveZones: Array<CardZone>,
 	standbyZone: Array<CardZone>,
+	cardRequest?: {
+		min: number,
+		max: number,
+		cards: Array<Card>,
+		callback: (chosenCards: Array<Card>) => void
+	},
 	online: boolean
 }
+
+export type TurnPhase = "setup" | "strike"
 
 export function getPlayerId(presence: nkruntime.Presence): string {
 	return presence.sessionId;
@@ -71,6 +81,7 @@ export namespace Match {
 			playerData: {},
 			players: {},
 			cards: {},
+			buffs: {},
 			status: "init",
 			turnPlayer: "",
 			turnCount: 0,
@@ -108,31 +119,85 @@ export namespace Match {
 
 	export function addCard(state: GameState, card: Card): void {
 		state.cards[card.id] = card;
+		state.buffs[card.id] = []
 	}
 
 	export function updateCard(state: GameState, card: Card): void {
 		state.cards[card.id] = card;
 	}
 
+	export function reapplyBuff(state: GameState, card: Card) {
+		// Recalculate stats from buffs
+		let stats: {[name in CardBuff["type"]]: number} = {
+			"grade": Card.getBaseGrade(card),
+			"power": Card.getBasePower(card),
+			"health": Card.getBaseHealth(card)
+		};
+
+		let buffs = getBuffs(state, card);
+		//state.log?.debug("reapplyBuff: buffs: %s", JSON.stringify(buffs))
+		for (let buff of buffs) {
+			let operationFunc: ((x: number, y: number) => number);
+			switch (buff.operation) {
+				case "add": operationFunc = (x, y) => x + y; break;
+				case "multiply": operationFunc = (x, y) => x * y; break;
+			}
+			let currentValue = stats[buff.type];
+			let modifiedValue = operationFunc(currentValue, buff.amount);
+			stats[buff.type] = modifiedValue;
+		}
+
+		Card.setGrade(card, stats.grade);
+
+		// Bonus stat from grade
+		let bonusGrade = Card.getBonusGrade(card);
+		let bonusPower = bonusGrade * Card.getBonusPower(card);
+		let bonusHealth = bonusGrade * Card.getBonusHealth(card);
+
+		Card.setPower(card, stats.power + bonusPower);
+		Card.setHealth(card, stats.health + bonusHealth);
+		
+	}
+
 	export function updateCards(state: GameState, cards: Array<Card>, reason: EventReason, reasonPlayer: string) {
-		state.log?.debug("update card: %s", JSON.stringify(state.eventQueue.length));
-		cards.forEach(card => {
-			//updateCard(state, card);
-		});
+		// Fires update hook
+		Match.discard(state, cards.filter(card => card.location === CardLocation.SERVE_ZONE && Card.getHealth(card) === 0), "", "destroyed");
+
 		state.eventQueue.push({ id: newUUID(state), type: "update_card", cards: cards.map(card => card.id), reason: reason, sourcePlayer: reasonPlayer })
-		state.log?.debug("update card: %s", JSON.stringify(state.eventQueue.length));
 	}
 	
 	export function damage(state: GameState, cards: Array<Card>, amount: number, reason: EventReason, reasonPlayer: string) {
+		if (amount <= 0) return;
 		for (let card of cards) {
 			if (!Card.hasLocation(card, CardLocation.SERVE_ZONE)) {
 				continue;
 			}
-			let remainingHealth = Card.getHealth(card) - amount;
-			Card.setHealth(card, remainingHealth);
+
+			let previousHealth = Card.getHealth(card)
+			let damagedBuff: CardBuff | null = getBuffById(state, card, BUFF_ID_DAMAGED);
+			if (!damagedBuff) {
+				damagedBuff = {
+					id: BUFF_ID_DAMAGED,
+					sourceCard: null,
+					type: "health",
+					operation: "add",
+					amount: -amount,
+					resets: CardBuffResetFlag.TARGET_REMOVED
+				};
+				addBuff(state, [card], damagedBuff);
+			}
+			else {
+				damagedBuff.amount -= amount;
+				state.log?.debug("damage.updatebuff(): buffs: %s", JSON.stringify(getBuffs(state, card)))
+				reapplyBuff(state, card);
+			}
+			
+			state.log?.debug("damage(): cumulative_damage: {%d}, cur_health: {%d}, prev_health: {%d}", -damagedBuff.amount, Card.getHealth(card), previousHealth);
+			//let remainingHealth = Card.getHealth(card) - amount;
+			//Card.setHealth(card, remainingHealth);
 		}
 		Match.updateCards(state, cards, reason, reasonPlayer)
-		Match.discard(state, cards.filter(card => Card.getHealth(card) === 0), "", "destroyed");
+		//Match.discard(state, cards.filter(card => Card.getHealth(card) === 0), "", "destroyed");
 	}
 
 	export function getPlayers(state: GameState): Array<string> {
@@ -224,7 +289,7 @@ export namespace Match {
 		// Filter in any zone that has any location specified in the location parameter
 		// And if column parameter is specified, filter in only zones with the same column
 		let zones = getZones(state, ownerId);
-		let foundZones = zones.filter(zone => Utility.bitMaskIntersects(zone.location, location) && (!filterColumn || (column === zone.column)));
+		let foundZones = zones.filter(zone => BitField.any(zone.location, location) && (!filterColumn || (column === zone.column)));
 		//state.log?.debug("findZones called with location: %d, got zone with the following locations and size: %s", location, foundZones.map(z => "" + z.location + "," + z.cards.length).reduce((l1, l2) => l1 + " " + l2, ""));
 		return foundZones;
 	}
@@ -237,6 +302,13 @@ export namespace Match {
 			let oldZone = findZones(state, oldLocation, Card.getOwner(card), Card.getColumn(card))
 			if (oldZone.length > 0) {
 				oldZone[0].cards = oldZone[0].cards.filter(cardInZone => cardInZone !== card.id);
+			}
+			
+			if (BitField.any(oldLocation, CardLocation.ON_FIELD) && !BitField.any(zone.location, CardLocation.ON_FIELD)) {
+				// left the field
+				state.log?.debug("card left the field: %s", Card.getName(card))
+				removeBuffs(state, [card], buff => BitField.any(buff.resets, CardBuffResetFlag.TARGET_REMOVED));
+				removeBuffs(state, getCards(state, CardLocation.ON_FIELD), buff => buff.sourceCard === card && BitField.any(buff.resets, CardBuffResetFlag.SOURCE_REMOVED));
 			}
 		});
 
@@ -294,17 +366,19 @@ export namespace Match {
 		state.eventQueue.push({ id: newUUID(state), sourcePlayer: playerId, type: "set", card: card.id, column: column });
 	}
 
-	export function summon(state: GameState, card: Card, playerId: string, column: number, reason: EventReason) {
-		let zone = getPlayer(state, playerId).serveZones[column];
+	export function summon(state: GameState, card: Card, playerId: string, column: number, reason: EventReason, isQuickSet: boolean = false) {
+		let zone = isQuickSet ? getPlayer(state, playerId).standbyZone[column] : getPlayer(state, playerId).serveZones[column];
 		if (!zone) {
 			return;
 		}
 
 		moveCardToZone(state, [card], zone);
+
 		// allow attack on owner turn and turn 2 or onward only
 		if (Match.isPlayerTurn(state, Card.getOwner(card)) && state.turnCount > 1) {
 			resetCardAttackCount(state, card);
 		}
+
 		updateCards(state, [card], reason, playerId);
 		// TODO: Queue summon event
 		state.eventQueue.push({ id: newUUID(state), sourcePlayer: playerId, type: "summon", card: card.id, column: column });
@@ -398,13 +472,18 @@ export namespace Match {
 	}
 
 	export function gotoNextTurn(state: GameState, playerId: string): void {
+		endTurn(state);
+
 		let nextTurnPlayer = getOpponent(state, state.turnPlayer);
 		state.turnCount += 1;
 		state.turnPlayer = nextTurnPlayer;
 		state.eventQueue.push({ id: newUUID(state), sourcePlayer: playerId, type: "change_turn", turn: state.turnCount, turnPlayer: state.turnPlayer});
-
 		// TODO: Add hook
 		beginTurn(state);
+	}
+
+	export function endTurn(state: GameState): void {
+		removeBuffs(state, getCards(state, CardLocation.ON_FIELD), (buff) => BitField.any(buff.resets, CardBuffResetFlag.END_TURN));
 	}
 
 	export function beginTurn(state: GameState): void {
@@ -474,14 +553,13 @@ export namespace Match {
 			return;
 		}
 		state.eventQueue.push({ id: newUUID(state), sourcePlayer: playerId, type: "attack", attackingCard: attackingCard.id, directAttack: false, targetCard: targetCard.id });
-
 		// TODO: Add hook event here
 
+		let targetPower = Card.getPower(targetCard);
 		let attackerPower = Card.getPower(attackingCard);
 		removeCardAttackCount(state, attackingCard);
 
-		let targetPower = Card.getPower(targetCard);
-
+		state.log?.debug("battle(): targetPower: {%d}, attackerPower: {%d}", targetPower, attackerPower);
 		damage(state, [attackingCard], targetPower, "battle", playerId);
 		damage(state, [targetCard], attackerPower, "battle", playerId);
 	}
@@ -505,5 +583,52 @@ export namespace Match {
 
 	export function isStrikePhase(state: GameState): boolean {
 		return state.turnPhase === "strike"
+	}
+
+	export function addBuff(state: GameState, cards: Array<Card>, buff: CardBuff) {
+		for (let card of cards) {
+			state.buffs[card.id] = state.buffs[card.id].concat(buff)
+			state.log?.debug("addBuff: buffs: %s", JSON.stringify(state.buffs[card.id]))
+			state.log?.debug("addBuff: buffs: %s", JSON.stringify(getBuffs(state, card)))
+			reapplyBuff(state, card);
+		}
+		updateCards(state, cards, "gamerule", "");
+	}
+
+	export function getBuffs(state: GameState, card: Card): Array<CardBuff> {
+		return state.buffs[card.id];
+	}
+
+	export function removeBuffs(state: GameState, cards: Array<Card>, condition: (buff: CardBuff) => boolean) {
+		for (let card of cards) {
+			let prevLen = state.buffs[card.id].length
+			state.buffs[card.id] = state.buffs[card.id].filter(buff => !condition(buff));
+			let nowLen = state.buffs[card.id].length
+			if (prevLen > nowLen) 
+				state.log?.debug("removeBuffs from %s: from %d to -> %d", Card.getName(card), prevLen, nowLen)
+			reapplyBuff(state, card);
+		}
+		updateCards(state, cards, "gamerule", "");
+	}
+
+	export function getBuffById(state: GameState, card: Card, id: string): CardBuff | null {
+		let result = state.buffs[card.id].find(buff => buff.id === id);
+		return result || null;
+	}
+
+	export async function makePlayerSelectCards(state: GameState, playerId: string, cards: Array<Card>, min: number, max: number = min): Promise<Array<Card>> {
+		state.eventQueue.push({ id: newUUID(state), type: "request_card_choice", sourcePlayer: "", player: playerId, cards: cards.map(c => c.id), min: min, max: max, reason: "gamerule", hint: "none" })
+		return new Promise((resolve) => {
+			let newRequest = {
+				min: min,
+				max: max,
+				cards: cards,
+				callback: (selectedCards: Array<Card>) => {
+					state.players[playerId]!.cardRequest = undefined
+					resolve(selectedCards)
+				}
+			}
+			state.players[playerId]!.cardRequest = newRequest
+		})
 	}
 }
