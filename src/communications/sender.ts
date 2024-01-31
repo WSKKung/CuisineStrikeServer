@@ -54,6 +54,8 @@ interface DishSummonPacket {
 	materials: Array<CardPacket>
 }
 
+
+
 function localizeSingleCardData(card: Card, state: GameState, playerId: string): CardPacket {
 	let isCardOwner = card.owner === playerId;
 	let isDataPublicForPlayer = false;
@@ -199,6 +201,28 @@ export function broadcastMatchEvent(state: GameState, dispatcher: MatchMessageDi
 				};
 				sendToPlayer(dispatcher, MatchEventCode.ATTACK, packet, playerId);
 			});
+			break;
+
+		case "activate":
+			Match.forEachPlayers(state, playerId => {
+				let packet = {
+					card: localizeSingleCardData(Match.findCardByID(state, event.card)!, state, playerId),
+					player: event.player
+				};
+				sendToPlayer(dispatcher, MatchEventCode.ACTIVATE, packet, playerId);
+			});
+			break;
+
+		case "request_card_choice":
+			Match.forEachPlayers(state, playerId => {
+				let packet = {
+					is_you: playerId === event.player,
+					cards: playerId === event.player ? localizeCardData(Match.findCardsById(state, event.cards), state, playerId) : [],
+					min: event.min,
+					max: event.max
+				};
+				sendToPlayer(dispatcher, MatchEventCode.REQUEST_CARD_CHOICE, packet, playerId);
+			})
 			break;
 
 		case "discard":
