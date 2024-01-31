@@ -145,6 +145,10 @@ export namespace Card {
 		return card.owner;
 	}
 
+	export function isSame(card: Card, another: Card): boolean {
+		return card.id === another.id;
+	}
+
 	export function hasType(card: Card, type: CardType): boolean {
 		return BitField.any(getType(card), type);
 	}
