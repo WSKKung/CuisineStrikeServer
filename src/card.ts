@@ -1,5 +1,5 @@
 import { CardZone } from "./field";
-import { Utility } from "./utility";
+import { BitField, Utility } from "./utility";
 
 export type CardID = string;
 
@@ -23,6 +23,7 @@ export enum CardLocation {
 	SERVE_ZONE = 8,
 	STANDBY_ZONE = 16,
 	TRASH = 32,
+	ON_FIELD = SERVE_ZONE | STANDBY_ZONE,
 	ANYWHERE = HAND | MAIN_DECK | RECIPE_DECK | SERVE_ZONE | STANDBY_ZONE | TRASH
 }
 
@@ -31,7 +32,8 @@ export enum CardClass {
 	UNKNOWN = 0b0,
 	GRAIN = 0b1,
 	MEAT = 0b10,
-	BREAD = 0b100
+	BREAD = 0b100,
+	EGG = 0b1000
 }
 
 export type CardProperties = {
@@ -52,9 +54,9 @@ export type Card = {
 	owner: string,
 	baseProperties: CardProperties,
 	properties: CardProperties,
-	zone?: CardZone,
 	location: CardLocation,
-	column: number
+	column: number,
+	attacks: number
 }
 
 export namespace Card {
@@ -69,7 +71,8 @@ export namespace Card {
 			baseProperties: baseProperties,
 			properties,
 			location: CardLocation.VOID,
-			column: 0
+			column: 0,
+			attacks: 0
 		};
 		return card;
 	}
@@ -143,11 +146,11 @@ export namespace Card {
 	}
 
 	export function hasType(card: Card, type: CardType): boolean {
-		return Utility.bitMaskIntersects(getType(card), type);
+		return BitField.any(getType(card), type);
 	}
 	
 	export function hasClass(card: Card, c_class: CardClass): boolean {
-		return Utility.bitMaskIntersects(getClass(card), c_class);
+		return BitField.any(getClass(card), c_class);
 	}
 
 	export function setGrade(card: Card, amount: number): void {
@@ -169,7 +172,7 @@ export namespace Card {
 
 	export function isAbleToSetAsIngredient(card: Card): boolean {
 		if (getType(card) === CardType.INGREDIENT_DISH) {
-			return hasLocation(card, CardLocation.SERVE_ZONE);
+			return hasLocation(card, CardLocation.SERVE_ZONE | CardLocation.RECIPE_DECK);
 		}
 		else return hasType(card, CardType.INGREDIENT) && hasLocation(card, CardLocation.HAND);
 	}
