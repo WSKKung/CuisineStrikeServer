@@ -1,11 +1,14 @@
-import { GameState, Match } from "./match";
-import { Card } from "./card";
+import { GameState, Match, TurnPhase } from "./match";
+import { Card, CardType } from "./card";
 import { GameStorageAccess } from "./wrapper";
 import { Recipe, DishSummonProcedure } from "./cards/cook_summon_procedure";
 import { CardLocation } from "./card";
 import zod from "zod";
 import { GameConfiguration } from "./constants";
-import { SetIngredientActionParams, CookSummonActionParams, AttackActionParams, ActionType, actionSchemas } from "./action_schema";
+import { SetIngredientActionParams, CookSummonActionParams, AttackActionParams, ActionType, actionSchemas, ActivateActionCardParams, ChooseCardsParams } from "./action_schema";
+import { BUFF_ID_OVERGRADED, CardBuff, CardBuffResetCondition } from "./buff";
+import { CardEffectProvider, CardEffectContext } from "./effects/effect";
+import { registerCardEffectScripts } from "./scripts";
 
 export type ActionHandlerResult = {
 	success: true
@@ -38,6 +41,16 @@ function validateTurnPlayer(next: ActionHandleFunction): ActionHandleFunction {
 	}
 }
 
+// middleware to validate action on specific phase
+function validatePhase(phase: TurnPhase, next: ActionHandleFunction): ActionHandleFunction {
+	return (context, params) => {
+		if (context.gameState.turnPhase !== phase) {
+			return { success: false, data: { reason: "INCORRECT_PHASE" } };
+		}
+		return next(context, params);
+	}
+}
+
 // middleware to validate type of each properties in params object
 function validateParams<ParamType>(schema: zod.ZodType<ParamType>, next: ActionHandleFunction<ParamType>): ActionHandleFunction<ParamType> {
 	return (context, params) => {
@@ -46,11 +59,11 @@ function validateParams<ParamType>(schema: zod.ZodType<ParamType>, next: ActionH
 			return next(context, result);
 		}
 		catch (error: any) {
+			context.gameState.log?.debug(error.message)
 			return { success: false, data: { reason: "INVALID_ARGUMENT" } };
 		}
 	};
 }
-
 const endTurnActionHandler: ActionHandleFunction = (context, params) => {
 	Match.gotoNextTurn(context.gameState, context.senderId);
 	return { success: true };
@@ -146,6 +159,11 @@ const dishSummonHandler: ActionHandleFunction<CookSummonActionParams> = (context
 		return { success: false, data: { reason: "TARGET_CARD_CANNOT_SUMMON" } };
 	}
 
+	// check quick-set card if it can be set
+	if (params.quick_set && !Card.isAbleToSetAsIngredient(cardToSummon)) {
+		return { success: false, data: { reason: "TARGET_CARD_CANNOT_SET" } };
+	}
+
 	let materials: Array<Card> = Match.findCardsById(state, materialsId);
 
 	// check if player can actually use the given materials
@@ -156,8 +174,15 @@ const dishSummonHandler: ActionHandleFunction<CookSummonActionParams> = (context
 		return { success: false, data: { reason: "MATERIALS_INVALID" } };
 	}
 
+	let bonus_grade = materials.map(Card.getGrade).reduce((x, y) => x + y, -Card.getBaseGrade(cardToSummon));
+	if (bonus_grade < 0) {
+		return { success: false, data: { reason: "MATERIALS_UNDERGRADED" } };
+	}
+
 	// check zone to set
-	if (!Match.isZoneEmpty(state, CardLocation.SERVE_ZONE, playerId, columnToSummon)) {
+	// also allow quick-set into the same zone as one of the material used
+	let targetZone = params.quick_set ? CardLocation.STANDBY_ZONE : CardLocation.SERVE_ZONE
+	if (!Match.isZoneEmpty(state, targetZone, playerId, columnToSummon) && !(params.quick_set && materials.some(mat => mat.column === columnToSummon))) {
 		return { success: false, data: { reason: "COLUMN_INVALID" } };
 	}
 
@@ -171,22 +196,23 @@ const dishSummonHandler: ActionHandleFunction<CookSummonActionParams> = (context
 		return { success: false, data: { reason: "MATERIAL_INCORRECT" } };
 	}
 
-	// calculate extra stats
-	// This should be done before discarding materials because doing so will reset material's stats and any bonus grade will be lost
-	let grade = materials.map(Card.getGrade).reduce((x, y) => x + y, 0);
-
 	// Send materials to trash
 	Match.discard(state, materials, playerId, "cook_summon_cost");
-
-	Card.setGrade(cardToSummon, grade);
-
-	let bonusGrade = Card.getBonusGrade(cardToSummon);
-	
-	Card.setPower(cardToSummon, Card.getBasePower(cardToSummon) + bonusGrade * Card.getBonusPower(cardToSummon));
-	Card.setHealth(cardToSummon, Card.getBaseHealth(cardToSummon) + bonusGrade * Card.getBonusHealth(cardToSummon));
 	
 	// place card onto the field
-	Match.summon(state, cardToSummon!, playerId, columnToSummon, "cook_summon");
+	Match.summon(state, cardToSummon!, playerId, columnToSummon, "cook_summon", params.quick_set);
+
+	if (bonus_grade > 0) {
+		let overgradedBuff: CardBuff = {
+			id: BUFF_ID_OVERGRADED,
+			sourceCard: cardToSummon!,
+			type: "grade",
+			operation: "add",
+			amount: bonus_grade,
+			resets: CardBuffResetCondition.SOURCE_REMOVED
+		}
+		Match.addBuff(state, [cardToSummon!], overgradedBuff);		
+	}
 
 	return { success: true, data: { card: cardIdToSummon, column: columnToSummon, materials: materialsId } };
 }
@@ -251,18 +277,90 @@ const attackActionHandler: ActionHandleFunction<AttackActionParams> = (context, 
 	return { success: true, data: { } };
 }
 
+const activateActionCardHandler: ActionHandleFunction<ActivateActionCardParams> = (context, params) => {
+	let state = context.gameState;
+	let playerId = context.senderId;
+	let activatedCardId: string = params.card;
+	let activatedCard: Card | null = Match.findCardByID(state, activatedCardId);
+	if (!activatedCard) {
+		return { success: false, data: { reason: "TARGET_CARD_NOT_EXISTS" } };
+	}
+
+	if (
+		Card.getOwner(activatedCard) != playerId ||
+		Card.getLocation(activatedCard) != CardLocation.HAND
+	) {
+		return { success: false, data: { reason: "TARGET_CARD_INVALID" } };
+	}
+	
+	state.log?.debug("Player attempted to activate cards with code: %d", Card.getCode(activatedCard))
+	//state.log?.debug("Before register: %s", JSON.stringify(CardEffectProvider.effects))
+	//registerCardEffectScripts()
+	//state.log?.debug("Current register: %s", JSON.stringify(CardEffectProvider.effects))
+
+
+	let activatedEffect = CardEffectProvider.getEffect(Card.getCode(activatedCard));
+	if (!activatedEffect) {
+		return { success: false, data: { reason: "TARGET_CARD_HAS_NO_EFFECT" } };
+	}
+
+	let activationContext: CardEffectContext = { state: context.gameState, player: context.senderId, card: activatedCard }
+
+	// check activation condition
+	if (!activatedEffect.condition(activationContext)) {
+		return { success: false, data: { reason: "CONDITION_NOT_MET" } };
+	}
+
+	state.eventQueue.push({ id: Match.newUUID(state), player: playerId, type: "activate", card: activatedCardId, reason: "gamerule", sourcePlayer: playerId })
+
+	// run card activate script
+	activatedEffect.activate(activationContext).then((_) => {
+		Match.discard(state, [activatedCard!], playerId, "gamerule");
+	});
+
+	return { success: true, data: { } };
+}
+
+const chooseCardsHandler: ActionHandleFunction<ChooseCardsParams> = (context, params) => {
+	let state = context.gameState;
+	let playerId = context.senderId;
+	let cardRequest = Match.getPlayer(state, playerId).cardRequest;
+	if (!cardRequest) {
+		return { success: false, data: { reason: "CARD_CHOICES_NOT_REQUESTED" }}
+	}
+	
+	let chosenCardIds: string[] = params.cards as string[]
+	if (chosenCardIds.length < cardRequest.min || chosenCardIds.length > cardRequest.max) {
+		return { success: false, data: { reason: "INVALID_CARD_CHOICES" }}
+	}
+
+	for (let selectedCardId of chosenCardIds) {
+		if (cardRequest.cards.every(card => card.id !== selectedCardId)) {
+			return { success: false, data: { reason: "INVALID_CARD_CHOICES" }}
+		}
+	}
+
+	cardRequest.callback(Match.findCardsById(state, chosenCardIds))
+
+	return { success: true, data: {} };
+}
+
 export function getActionHandler(type: ActionType): ActionHandleFunction | null {
 	switch (type) {
 		case "end_turn":
 			return validateTurnPlayer(endTurnActionHandler);
 		case "go_to_strike_phase":
-			return validateTurnPlayer(goToStrikePhaseActionHandler);
+			return validatePhase("setup", validateTurnPlayer(goToStrikePhaseActionHandler));
 		case "set_ingredient":
-			return validateTurnPlayer(validateParams(actionSchemas.setIngredient, setIngredientHandler));
+			return validatePhase("setup", validateTurnPlayer(validateParams(actionSchemas.setIngredient, setIngredientHandler)));
 		case "cook_summon":
-			return validateTurnPlayer(validateParams(actionSchemas.cookSummon, dishSummonHandler));
+			return validatePhase("setup", validateTurnPlayer(validateParams(actionSchemas.cookSummon, dishSummonHandler)));
 		case "attack":
-			return validateTurnPlayer(validateParams(actionSchemas.attack, attackActionHandler));
+			return validatePhase("strike", validateTurnPlayer(validateParams(actionSchemas.attack, attackActionHandler)));
+		case "activate_action":
+			return validateTurnPlayer(validateParams(actionSchemas.activateAction, activateActionCardHandler))
+		case "choose_cards":
+			return validateParams(actionSchemas.chooseCards, chooseCardsHandler)
 		default:
 			return null
 	}
