@@ -1,16 +1,24 @@
 import { CardBuff, CardBuffResetCondition } from "../../buff";
 import { Card, CardLocation } from "../../card";
 import { Match } from "../../match";
-import { CardEffect } from "../../effects/effect";
+import { CardEffect, CardEffectContext } from "../../effects/effect";
 import { Utility } from "../../utility";
+
+function costFilter(context: CardEffectContext, card: Card) {
+	return !Card.isSame(card, context.card)
+}
 
 const CHEF_BLESSING_EFFECT: CardEffect = {
 	type: "active",
 	condition(context) {
-		return Match.countCards(context.state, CardLocation.SERVE_ZONE, context.player) > 0;
+		// implicit condition: must have at least 1 valid target on field and 1 valid cost target on hand (except this card)
+		return Match.countCards(context.state, CardLocation.SERVE_ZONE, context.player) > 0 && Match.countFilterCards(context.state, (card) => costFilter(context, card), CardLocation.HAND, context.player) > 0;
 	},
 
 	async activate(context) {
+		let discardChoice: Array<Card> = await Match.makePlayerSelectCards(context.state, context.player, Match.findCards(context.state, (card) => costFilter(context, card), CardLocation.HAND, context.player), 1, 1);
+		Match.discard(context.state, discardChoice, context.player, "gamerule");
+		
 		let choice: Array<Card> = await Match.makePlayerSelectCards(context.state, context.player, Match.getCards(context.state, CardLocation.SERVE_ZONE, context.player), 1, 1);
 		let atkBuff: CardBuff = {
 			id: Match.newUUID(context.state),
