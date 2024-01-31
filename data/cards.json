@@ -61,11 +61,31 @@
 				"type": 1,
 				"classes": 10,
 				"grade": 2,
-				"power": 2,
-				"health": 2,
+				"power": 3,
+				"health": 3,
 				"bonus_power": 1,
 				"bonus_health": 1,
 				"description": "Recipe: 1 Meat + 1 Egg\n(No ability)"
+			},
+			"8": {
+				"name": "Pepper Up",
+				"type": 4,
+				"description": "Your Dish gains 3 Power this turn."
+			},
+			"9": {
+				"name": "Chef's Blessing",
+				"type": 4,
+				"description": "Discard 1. Your Dish gains 1 Grade, 1 Power, and 1 Health."
+			},
+			"10": {
+				"name": "Recipe Recall",
+				"type": 4,
+				"description": "Recycle 1 Dish from your trash. Draw 1."
+			},
+			"11": {
+				"name": "Fork Trap",
+				"type": 4,
+				"description": "When your opponent's card attacks. Deals 5 damage to the attacking card."
 			}
 		}
 	}
