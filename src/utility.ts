@@ -61,3 +61,36 @@ export namespace Utility {
 		return cloned;
 	}
 }
+
+export namespace BitField {
+	/**
+	 * Check if at least one of the bit in `mask` matches with some bit in `value`
+	 * @example 
+	 * BitField.any(0b1110, 0b0010); // true
+	 * BitField.any(0b1110, 0b1100); // true
+	 * BitField.any(0b1110, 0b0001); // false
+	 * BitField.any(0b1110, 0b0101); // true
+	 * @param value 
+	 * @param mask2 
+	 * @returns 
+	 */
+	export function any(value: number, mask: number): boolean {
+		return (value & mask) !== 0;
+	}
+
+	/**
+	 * Check if every bits in `mask` match with some bit in `value`
+	 * @example 
+	 * BitField.all(0b1110, 0b0010); // true
+	 * BitField.all(0b1110, 0b1100); // true
+	 * BitField.all(0b1110, 0b0001); // false
+	 * BitField.all(0b1110, 0b0101); // false
+	 * @param value 
+	 * @param mask2 
+	 * @returns 
+	 */
+	export function all(value: number, mask: number): boolean {
+		return (value & mask) === mask;
+	}
+	
+}
