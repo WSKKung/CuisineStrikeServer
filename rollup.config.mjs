@@ -6,6 +6,8 @@ import typescript from '@rollup/plugin-typescript';
 
 const extensions = ['.mjs', '.js', '.ts', '.json'];
 
+
+/** @type {import('rollup').RollupOptions} */
 export default {
   input: './index.ts',
   external: ['nakama-runtime'],
@@ -28,6 +30,6 @@ export default {
     }),
   ],
   output: {
-    file: 'build/index.js',
-  },
+    file: 'build/index.js'
+  }
 };
