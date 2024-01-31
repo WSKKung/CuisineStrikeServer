@@ -56,17 +56,27 @@ interface DishSummonPacket {
 
 
 
-function localizeSingleCardData(card: Card, state: GameState, playerId: string): CardPacket {
+function localizeSingleCardData(card: Card, state: GameState, playerId: string, forceMode: "public" | "private" | "none" = "none"): CardPacket {
 	let isCardOwner = card.owner === playerId;
 	let isDataPublicForPlayer = false;
 
-	// public zone
-	if (Card.hasLocation(card, CardLocation.SERVE_ZONE | CardLocation.STANDBY_ZONE | CardLocation.TRASH)) {
-		isDataPublicForPlayer = true;
-	}
-	// private zone
-	else if (Card.hasLocation(card, CardLocation.HAND | CardLocation.RECIPE_DECK) && isCardOwner) {
-		isDataPublicForPlayer = true;
+	switch (forceMode) {
+		case "none":
+			// public zone
+			if (Card.hasLocation(card, CardLocation.SERVE_ZONE | CardLocation.STANDBY_ZONE | CardLocation.TRASH)) {
+				isDataPublicForPlayer = true;
+			}
+			// private zone
+			else if (Card.hasLocation(card, CardLocation.HAND | CardLocation.RECIPE_DECK) && isCardOwner) {
+				isDataPublicForPlayer = true;
+			}
+			break;
+		case "private":
+			isDataPublicForPlayer = false;
+			break;
+		case "public":
+			isDataPublicForPlayer = true;
+			break;
 	}
 
 	if (isDataPublicForPlayer) {
@@ -89,8 +99,8 @@ function localizeSingleCardData(card: Card, state: GameState, playerId: string):
 	}
 }
 
-function localizeCardData(cards: Array<Card>, state: GameState, playerId: string): Array<CardPacket> {
-	return cards.map(card => localizeSingleCardData(card, state, playerId));
+function localizeCardData(cards: Array<Card>, state: GameState, playerId: string, force_mode: "public" | "private" | "none" = "none"): Array<CardPacket> {
+	return cards.map(card => localizeSingleCardData(card, state, playerId, force_mode));
 }
 
 export function sendToPlayer(dispatcher: MatchMessageDispatcher, opCode: number, dataObject: Object, playerId: string) {
@@ -206,8 +216,9 @@ export function broadcastMatchEvent(state: GameState, dispatcher: MatchMessageDi
 		case "activate":
 			Match.forEachPlayers(state, playerId => {
 				let packet = {
-					card: localizeSingleCardData(Match.findCardByID(state, event.card)!, state, playerId),
-					player: event.player
+					card: localizeSingleCardData(Match.findCardByID(state, event.card)!, state, playerId, "public"),
+					player: event.player,
+					cancelable: false
 				};
 				sendToPlayer(dispatcher, MatchEventCode.ACTIVATE, packet, playerId);
 			});
@@ -217,31 +228,12 @@ export function broadcastMatchEvent(state: GameState, dispatcher: MatchMessageDi
 			Match.forEachPlayers(state, playerId => {
 				let packet = {
 					is_you: playerId === event.player,
-					cards: playerId === event.player ? localizeCardData(Match.findCardsById(state, event.cards), state, playerId) : [],
+					cards: playerId === event.player ? localizeCardData(Match.findCardsById(state, event.cards), state, playerId, "public") : [],
 					min: event.min,
 					max: event.max
 				};
 				sendToPlayer(dispatcher, MatchEventCode.REQUEST_CARD_CHOICE, packet, playerId);
 			})
-			break;
-
-		case "discard":
-			Match.forEachPlayers(state, playerId => {
-				let packet = {
-					cards: localizeCardData(Match.findCardsById(state, event.cards), state, playerId)
-				};
-				sendToPlayer(dispatcher, MatchEventCode.DISCARD_CARD, packet, playerId);
-			});
-			break;
-
-		case "to_hand":
-			Match.forEachPlayers(state, playerId => {
-				let packet = {
-					cards: localizeCardData(Match.findCardsById(state, event.cards), state, playerId),
-					is_you: playerId === event.sourcePlayer
-				};
-				sendToPlayer(dispatcher, MatchEventCode.ADD_CARD_TO_HAND, packet, playerId);
-			});
 			break;
 	}
 }
