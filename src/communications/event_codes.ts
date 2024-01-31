@@ -23,6 +23,8 @@ export enum MatchEventCode {
 	ATTACK = 9,
 	ADD_CARD_TO_HAND = 10,
 	DISCARD_CARD = 11,
+	ACTIVATE = 12,
+	REQUEST_CARD_CHOICE = 13,
 	ERROR = 98,
 	END_GAME = 99
 }
