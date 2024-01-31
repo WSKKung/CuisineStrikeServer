@@ -126,36 +126,22 @@ export namespace Match {
 		state.cards[card.id] = card;
 	}
 
-	export function reapplyBuff(state: GameState, card: Card) {
-		// Recalculate stats from buffs
-		let stats: {[name in CardBuff["type"]]: number} = {
-			"grade": Card.getBaseGrade(card),
-			"power": Card.getBasePower(card),
-			"health": Card.getBaseHealth(card)
-		};
+	export function reapplyBuffs(state: GameState, card: Card) {
+		Card.resetProperties(card);
 
 		let buffs = getBuffs(state, card);
 		//state.log?.debug("reapplyBuff: buffs: %s", JSON.stringify(buffs))
 		for (let buff of buffs) {
-			let operationFunc: ((x: number, y: number) => number);
-			switch (buff.operation) {
-				case "add": operationFunc = (x, y) => x + y; break;
-				case "multiply": operationFunc = (x, y) => x * y; break;
-			}
-			let currentValue = stats[buff.type];
-			let modifiedValue = operationFunc(currentValue, buff.amount);
-			stats[buff.type] = modifiedValue;
+			CardBuff.applyToCard(state, card, buff);
 		}
-
-		Card.setGrade(card, stats.grade);
 
 		// Bonus stat from grade
 		let bonusGrade = Card.getBonusGrade(card);
 		let bonusPower = bonusGrade * Card.getBonusPower(card);
 		let bonusHealth = bonusGrade * Card.getBonusHealth(card);
 
-		Card.setPower(card, stats.power + bonusPower);
-		Card.setHealth(card, stats.health + bonusHealth);
+		Card.setPower(card, Card.getPower(card) + bonusPower);
+		Card.setHealth(card, Card.getHealth(card) + bonusHealth);
 		
 	}
 
@@ -174,25 +160,17 @@ export namespace Match {
 			}
 
 			let previousHealth = Card.getHealth(card)
-			let damagedBuff: CardBuff | null = getBuffById(state, card, BUFF_ID_DAMAGED);
-			if (!damagedBuff) {
-				damagedBuff = {
-					id: BUFF_ID_DAMAGED,
-					sourceCard: null,
-					type: "health",
-					operation: "add",
-					amount: -amount,
-					resets: CardBuffResetFlag.TARGET_REMOVED
-				};
-				addBuff(state, [card], damagedBuff);
-			}
-			else {
-				damagedBuff.amount -= amount;
-				state.log?.debug("damage.updatebuff(): buffs: %s", JSON.stringify(getBuffs(state, card)))
-				reapplyBuff(state, card);
-			}
+			let damagedBuff: CardBuff = {
+				id: BUFF_ID_DAMAGED,
+				sourceCard: null,
+				type: "health",
+				operation: "add",
+				amount: -amount,
+				resets: CardBuffResetFlag.TARGET_REMOVED
+			};
+			addBuff(state, [card], damagedBuff);
 			
-			state.log?.debug("damage(): cumulative_damage: {%d}, cur_health: {%d}, prev_health: {%d}", -damagedBuff.amount, Card.getHealth(card), previousHealth);
+			//state.log?.debug("damage(): cumulative_damage: {%d}, cur_health: {%d}, prev_health: {%d}", -damagedBuff.amount, Card.getHealth(card), previousHealth);
 			//let remainingHealth = Card.getHealth(card) - amount;
 			//Card.setHealth(card, remainingHealth);
 		}
@@ -595,7 +573,7 @@ export namespace Match {
 			state.buffs[card.id] = state.buffs[card.id].concat(buff)
 			state.log?.debug("addBuff: buffs: %s", JSON.stringify(state.buffs[card.id]))
 			state.log?.debug("addBuff: buffs: %s", JSON.stringify(getBuffs(state, card)))
-			reapplyBuff(state, card);
+			reapplyBuffs(state, card);
 		}
 		updateCards(state, cards, "gamerule", "");
 	}
@@ -611,7 +589,7 @@ export namespace Match {
 			let nowLen = state.buffs[card.id].length
 			if (prevLen > nowLen) 
 				state.log?.debug("removeBuffs from %s: from %d to -> %d", Card.getName(card), prevLen, nowLen)
-			reapplyBuff(state, card);
+			reapplyBuffs(state, card);
 		}
 		updateCards(state, cards, "gamerule", "");
 	}
