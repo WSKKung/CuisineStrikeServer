@@ -65,6 +65,21 @@ export type GameEvent = {
 		type: "update_hp",
 		player: string,
 		reason: EventReason
+	} |
+	{
+		type: "activate",
+		player: string,
+		card: CardID,
+		reason: EventReason
+	} |
+	{
+		type: "request_card_choice",
+		player: string,
+		cards: Array<CardID>,
+		min: number,
+		max: number,
+		hint: string,
+		reason: EventReason
 	}
 )
 
