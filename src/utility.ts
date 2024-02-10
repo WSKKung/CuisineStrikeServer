@@ -1,3 +1,5 @@
+import { boolean } from "zod";
+
 export namespace Utility {
 
 	/**
@@ -54,12 +56,94 @@ export namespace Utility {
 	  
 		return array;
 	}
+	
 
 	export function shallowClone(object: any): any {
 		let cloned: any = {};
 		Object.keys(object).forEach(key => cloned[key] = object[key]);
 		return cloned;
 	}
+}
+
+export namespace ArrayUtil {
+	/**
+	 * Shuffle contents of given array using Fisher–Yates shuffle algorithm
+	 * This function mutates the given array.
+	 * @param array 
+	 * @returns 
+	 */
+	export function shuffle<T>(array: Array<T>): Array<T> {
+		let currentIndex: number = array.length;
+		let randomIndex: number;
+		  
+		// While there remain elements to shuffle.
+		while (currentIndex > 0) {
+	  
+		  // Pick a remaining element.
+		  randomIndex = Math.floor(Math.random() * currentIndex);
+		  currentIndex--;
+	  
+		  // And swap it with the current element.
+		  [array[currentIndex], array[randomIndex]] = [
+			array[randomIndex], array[currentIndex]];
+		}
+	  
+		return array;
+	}
+	
+	/**
+	 * Shuffle contents of given array using Fisher–Yates shuffle algorithm
+	 * This function mutates the given array.
+	 * @param array 
+	 * @returns 
+	 */
+	export function pickRandom<T>(array: Array<T>, count: number = 1): Array<T> {
+		if (array.length < count) {
+			throw new Error("Count cannot be larger than size of the array!")
+		}
+
+		let pickedIndices: Array<number> = [];
+		while (pickedIndices.length < count) {
+			let randomIndex = Math.floor(Math.random() * array.length)
+			if (!pickedIndices.includes(randomIndex)) {
+				pickedIndices.push(randomIndex);
+			}
+		}
+		
+		return pickedIndices.map(idx => array[idx]);
+	}
+
+	export function countUnique<T, K>(array: Array<T>, keyFunction: (value: T) => K): Array<{ key: K, count: number }> {
+		let countArray: Array<{ key: K, count: number }> = [];
+		for (let value of array) {
+			let key: K = keyFunction(value)
+			let counted: boolean = false;
+			for (let countEntry of countArray) {
+				if (countEntry.key === key) {
+					countEntry.count += 1;
+					counted = true;
+					break;
+				}
+			}
+			if (!counted) {
+				countArray.push({ key: key, count: 0 });
+			}
+		}
+		return countArray;
+	}
+
+	export function seperate<T>(array: Array<T>, filterFunction: (value: T) => boolean): ({ 0: Array<T>, 1: Array<T> }) {
+		let result: { 0: Array<T>, 1: Array<T> } = { 0: [], 1: [] };
+		for (let element of array) {
+			if (filterFunction(element)) {
+				result[1].push(element);
+			} else {
+				result[0].push(element);
+			}
+		}
+		return result;
+	}
+
 }
 
 export namespace BitField {
@@ -92,5 +176,18 @@ export namespace BitField {
 	export function all(value: number, mask: number): boolean {
 		return (value & mask) === mask;
 	}
-	
+
+	export function flaggedBits(value: number): Array<number> {
+		let result: Array<number> = [];
+		let currentBitValue: number = 1;
+		while (value !== 0) {
+			if ((value & 1) === 1) {
+				result.push(currentBitValue);
+			}
+			value = value >>> 1;
+			currentBitValue = currentBitValue << 1;
+		}
+		return result;
+	}
+
 }

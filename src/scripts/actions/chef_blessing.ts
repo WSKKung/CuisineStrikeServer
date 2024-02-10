@@ -1,8 +1,9 @@
 import { CardBuff, CardBuffResetCondition } from "../../buff";
-import { Card, CardLocation } from "../../card";
+import { Card, CardLocation } from "../../model/cards";
 import { Match } from "../../match";
 import { CardEffect, CardEffectContext } from "../../effects/effect";
 import { Utility } from "../../utility";
+import { EventReason } from "../../events";
 
 function costFilter(context: CardEffectContext, card: Card) {
 	return !Card.isSame(card, context.card)
@@ -17,7 +18,7 @@ const CHEF_BLESSING_EFFECT: CardEffect = {
 
 	async activate(context) {
 		let discardChoice: Array<Card> = await Match.makePlayerSelectCards(context.state, context.player, Match.findCards(context.state, (card) => costFilter(context, card), CardLocation.HAND, context.player), 1, 1);
-		Match.discard(context.state, discardChoice, context.player, "gamerule");
+		Match.discard(context.state, discardChoice, context.player, EventReason.EFFECT);
 		
 		let choice: Array<Card> = await Match.makePlayerSelectCards(context.state, context.player, Match.getCards(context.state, CardLocation.SERVE_ZONE, context.player), 1, 1);
 		let atkBuff: CardBuff = {

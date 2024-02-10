@@ -1,5 +1,5 @@
 import { CardBuff, CardBuffResetCondition } from "../../buff";
-import { Card, CardLocation } from "../../card";
+import { Card, CardLocation } from "../../model/cards";
 import { Match } from "../../match";
 import { CardEffect } from "../../effects/effect";
 

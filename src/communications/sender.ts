@@ -1,6 +1,6 @@
-import { CardProperties, Card } from "../card"
-import { GameEvent } from "../event_queue"
-import { CardLocation } from "../card";
+import { CardProperties, Card } from "../model/cards";
+import { GameEvent } from "../events";
+import { CardLocation } from "../model/cards";
 import { GameState, Match } from "../match"
 import { MatchMessageDispatcher } from "../wrapper"
 import { MatchEventCode } from "./event_codes";
@@ -144,7 +144,7 @@ export function broadcastMatchEvent(state: GameState, dispatcher: MatchMessageDi
 		case "update_card":
 			Match.forEachPlayers(state, playerId => {
 				let packet = {
-					cards: localizeCardData(Match.findCardsById(state, event.cards), state, playerId),
+					cards: localizeCardData(event.cards, state, playerId),
 					reason: event.reason
 				}
 				sendToPlayer(dispatcher, MatchEventCode.UPDATE_CARD, packet, playerId);
@@ -183,7 +183,7 @@ export function broadcastMatchEvent(state: GameState, dispatcher: MatchMessageDi
 		case "set":
 			Match.forEachPlayers(state, playerId => {
 				let packet: IngredientSetPacket = {
-					card: localizeSingleCardData(Match.findCardByID(state, event.card)!, state, playerId),
+					card: localizeSingleCardData(event.card, state, playerId),
 					column: event.column,
 					materials: []//localizeCardData(Match.findCardsById(state, event.materials), state, playerId)
 				};
@@ -194,7 +194,7 @@ export function broadcastMatchEvent(state: GameState, dispatcher: MatchMessageDi
 		case "summon":
 			Match.forEachPlayers(state, playerId => {
 				let packet: DishSummonPacket = {
-					card: localizeSingleCardData(Match.findCardByID(state, event.card)!, state, playerId),
+					card: localizeSingleCardData(event.card, state, playerId),
 					column: event.column,
 					materials: []//localizeCardData(Match.findCardsById(state, event.materials), state, playerId)
 				};
@@ -205,8 +205,8 @@ export function broadcastMatchEvent(state: GameState, dispatcher: MatchMessageDi
 		case "attack":
 			Match.forEachPlayers(state, playerId => {
 				let packet = {
-					attacker_card: localizeSingleCardData(Match.findCardByID(state, event.attackingCard)!, state, playerId),
-					target_card: event.directAttack ? undefined : localizeSingleCardData(Match.findCardByID(state, event.targetCard)!, state, playerId),
+					attacker_card: localizeSingleCardData(event.attackingCard, state, playerId),
+					target_card: event.directAttack ? undefined : localizeSingleCardData(event.targetCard, state, playerId),
 					is_direct_attack: event.directAttack
 				};
 				sendToPlayer(dispatcher, MatchEventCode.ATTACK, packet, playerId);
@@ -216,7 +216,7 @@ export function broadcastMatchEvent(state: GameState, dispatcher: MatchMessageDi
 		case "activate":
 			Match.forEachPlayers(state, playerId => {
 				let packet = {
-					card: localizeSingleCardData(Match.findCardByID(state, event.card)!, state, playerId, "public"),
+					card: localizeSingleCardData(event.card, state, playerId, "public"),
 					player: event.player,
 					cancelable: false
 				};
@@ -228,7 +228,7 @@ export function broadcastMatchEvent(state: GameState, dispatcher: MatchMessageDi
 			Match.forEachPlayers(state, playerId => {
 				let packet = {
 					is_you: playerId === event.player,
-					cards: playerId === event.player ? localizeCardData(Match.findCardsById(state, event.cards), state, playerId, "public") : [],
+					cards: playerId === event.player ? localizeCardData(event.cards, state, playerId, "public") : [],
 					min: event.min,
 					max: event.max
 				};
@@ -237,45 +237,6 @@ export function broadcastMatchEvent(state: GameState, dispatcher: MatchMessageDi
 			break;
 	}
 }
-
-/*
-function broadcastMatchActionEvent(state: GameState, dispatcher: MatchMessageDispatcher, action: ActionResult) {
-	switch (action.type) {
-		case "end_turn":
-			Match.getActivePlayers(state).forEach(playerId => {
-				let event: TurnChangePacket = {
-					turn_count: state.turnCount,
-					is_your_turn: Match.isPlayerTurn(state, playerId)
-				};
-				sendToPlayer(dispatcher, MatchEventCode.CHANGE_TURN, event, playerId);
-			});
-			break;
-
-		case "set_ingredient":
-			Match.getActivePlayers(state).forEach(playerId => {
-				let event: IngredientSetPacket = {
-					card: localizeSingleCardData(Match.findCardByID(state, action.data.card)!, state, playerId),
-					column: action.data.column,
-					materials: localizeCardData(Match.findCardsById(state, action.data.materials), state, playerId)
-				};
-				state.log?.debug(JSON.stringify(event));
-				sendToPlayer(dispatcher, MatchEventCode.SET_INGREDIENT, event, playerId);
-			});
-			break;
-
-		case "summon_dish":
-			Match.getActivePlayers(state).forEach(playerId => {
-				let event: DishSummonPacket = {
-					card: localizeSingleCardData(Match.findCardByID(state, action.data.card)!, state, playerId),
-					column: action.data.column,
-					materials: localizeCardData(Match.findCardsById(state, action.data.materials), state, playerId)
-				};
-				sendToPlayer(dispatcher, MatchEventCode.SUMMON_DISH, event, playerId);
-			});
-			break;
-	}
-}
-*/
 
 export function broadcastMatchEnd(state: GameState, dispatcher: MatchMessageDispatcher) {
 	Match.getActivePlayers(state).forEach(playerId => {

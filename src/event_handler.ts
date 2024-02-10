@@ -1,8 +1,9 @@
 import { number } from "zod"
-import { GameEvent, GameEventListener, GameEventType, createGameEventListener } from "./event_queue"
+import { GameEventListener, GameEventType, createGameEventListener } from "./event_queue"
+import { GameEvent } from "./events"
 import { GameState, Match } from "./match"
 import { GameConfiguration } from "./constants"
-import { Card, CardLocation } from "./card"
+import { Card, CardLocation } from "./model/cards"
 
 export type GameEventHandler = {
 	addListener<T extends GameEventType>(listener: GameEventListener<T>): void,

@@ -1,4 +1,4 @@
-import { Card } from "../card"
+import { Card } from "../model/cards"
 import { GameState } from "../match"
 
 export interface CardEffect {

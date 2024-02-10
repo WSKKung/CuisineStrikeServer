@@ -1,10 +1,11 @@
-import { Card } from "../card";
-import { Recipe, DishSummonProcedure } from "../cards/cook_summon_procedure";
+import { Card } from "../model/cards";
+import { DishSummonProcedure } from "../cards/cook_summon_procedure";
+import { Recipe } from "../model/recipes";
 import { createNakamaGameStorageAccess } from "../wrapper";
 
 export const ingredientSetMaterialCheckRPC: nkruntime.RpcFunction = (ctx, logger, nk, payload) => {
 	// create API dependecy controllers
-	let gameStorageAccess = createNakamaGameStorageAccess(nk, logger);
+	let gameStorageAccess = createNakamaGameStorageAccess({ nk, logger });
 
 	let data = JSON.parse(payload);
 	let cardCode: number = data.card;
@@ -39,7 +40,7 @@ export const ingredientSetMaterialCheckRPC: nkruntime.RpcFunction = (ctx, logger
 */
 export const recipeCheckRPC: nkruntime.RpcFunction = (ctx, logger, nk, payload) => {
 	// create API dependecy controllers
-	let gameStorageAccess = createNakamaGameStorageAccess(nk, logger);
+	let gameStorageAccess = createNakamaGameStorageAccess({ nk, logger });
 
 	let data = JSON.parse(payload);
 	let cardCode: number = data.card;

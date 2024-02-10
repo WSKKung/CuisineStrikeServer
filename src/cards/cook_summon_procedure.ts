@@ -1,50 +1,5 @@
-import { Card } from "../card"
-
-export interface Recipe {
-	slots: RecipeSlot[]
-}
-
-export interface RecipeSlot {
-	min: number,
-	max: number,
-	condition: RecipeSlotFilter
-}
-
-export type RecipeSlotFilter =
-	{
-		type: "any" 
-	} |
-	{
-		type: "not",
-		condition: RecipeSlotFilter
-	} |
-	{
-		type: "and",
-		conditions: Array<RecipeSlotFilter>
-
-	} |
-	{
-		type: "or",
-		conditions: Array<RecipeSlotFilter>
-
-	} |
-	{
-		type: "check_card_type",
-		card_type: number
-	} |
-	{
-		type: "check_code",
-		code: number
-	} |
-	{
-		type: "check_grade",
-		min: number,
-		max: number
-	} |
-	{
-		type: "check_classes",
-		classes: number
-	}
+import { Card } from "../model/cards"
+import { Recipe, RecipeSlotFilter } from "../model/recipes"
 
 export namespace DishSummonProcedure {
 

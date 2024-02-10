@@ -1,5 +1,6 @@
-import { CardZone } from "./field";
-import { BitField, Utility } from "./utility";
+import { z } from "zod";
+import { BitField, Utility } from "../utility";
+import { CamelKeysToSnake } from "../utility/types";
 
 export type CardID = string;
 
@@ -57,6 +58,20 @@ export type Card = {
 	location: CardLocation,
 	column: number,
 	attacks: number
+}
+
+export const CardSchemas = {
+	CARD: z.object({
+		name: z.string(),
+		description: z.string(),
+		type: z.number().int().min(0),
+		grade: z.number().int().min(0).optional(),
+		classes: z.number().int().min(0).optional(),
+		power: z.number().int().min(0).optional(),
+		health: z.number().int().min(0).optional(),
+		bonusPower: z.number().int().min(0).optional(),
+		bonusHealth: z.number().int().min(0).optional()
+	})
 }
 
 export namespace Card {
@@ -166,7 +181,6 @@ export namespace Card {
 	}
 
 	export function setHealth(card: Card, amount: number): void {
-		if (amount < 0) amount = 0;
 		card.properties.health = amount;
 	}
 

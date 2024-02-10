@@ -1,14 +1,15 @@
 import { GameState, Match, TurnPhase } from "./match";
-import { Card, CardType } from "./card";
 import { GameStorageAccess } from "./wrapper";
-import { Recipe, DishSummonProcedure } from "./cards/cook_summon_procedure";
-import { CardLocation } from "./card";
+import { DishSummonProcedure } from "./cards/cook_summon_procedure";
+import { Recipe } from "./model/recipes";
+import { CardLocation, Card } from "./model/cards";
 import zod from "zod";
 import { GameConfiguration } from "./constants";
 import { SetIngredientActionParams, CookSummonActionParams, AttackActionParams, ActionType, actionSchemas, ActivateActionCardParams, ChooseCardsParams } from "./action_schema";
 import { BUFF_ID_OVERGRADED, CardBuff, CardBuffResetCondition } from "./buff";
 import { CardEffectProvider, CardEffectContext } from "./effects/effect";
 import { registerCardEffectScripts } from "./scripts";
+import { EventReason } from "./events";
 
 export type ActionHandlerResult = {
 	success: true
@@ -125,7 +126,7 @@ const setIngredientHandler: ActionHandleFunction<SetIngredientActionParams> = (c
 
 	// send material to trash
 	if (materials.length > 0) {
-		Match.discard(state, materials, playerId, "set_ingredient_cost");
+		Match.discard(state, materials, playerId, EventReason.SET | EventReason.COST);
 	}
 
 	// place card onto the field
@@ -197,10 +198,10 @@ const dishSummonHandler: ActionHandleFunction<CookSummonActionParams> = (context
 	}
 
 	// Send materials to trash
-	Match.discard(state, materials, playerId, "cook_summon_cost");
+	Match.discard(state, materials, playerId, EventReason.SUMMON | EventReason.COST);
 	
 	// place card onto the field
-	Match.summon(state, cardToSummon!, playerId, columnToSummon, "cook_summon", params.quick_set);
+	Match.summon(state, cardToSummon!, playerId, columnToSummon, EventReason.SUMMON, params.quick_set);
 
 	if (bonus_grade > 0) {
 		let overgradedBuff: CardBuff = {
@@ -311,11 +312,11 @@ const activateActionCardHandler: ActionHandleFunction<ActivateActionCardParams> 
 		return { success: false, data: { reason: "CONDITION_NOT_MET" } };
 	}
 
-	state.eventQueue.push({ id: Match.newUUID(state), player: playerId, type: "activate", card: activatedCardId, reason: "gamerule", sourcePlayer: playerId })
+	state.eventQueue.push({ id: Match.newUUID(state), player: playerId, type: "activate", card: activatedCard, reason: EventReason.ACTIVATE, sourcePlayer: playerId })
 
 	// run card activate script
 	activatedEffect.activate(activationContext).then((_) => {
-		Match.discard(state, [activatedCard!], playerId, "gamerule");
+		Match.discard(state, [activatedCard!], playerId, EventReason.GAMERULE);
 	});
 
 	return { success: true, data: { } };

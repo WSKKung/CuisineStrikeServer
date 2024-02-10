@@ -1,4 +1,4 @@
-import { Card } from "./card";
+import { Card } from "./model/cards";
 import { GameState } from "./match";
 
 export const BUFF_ID_DAMAGED = "70eaccf6-b641-47c6-af7e-dce170fa4284";

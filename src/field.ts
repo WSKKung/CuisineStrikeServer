@@ -1,5 +1,5 @@
-import { CardLocation } from "./card";
-import { CardID } from "./card";
+import { CardLocation } from "./model/cards";
+import { CardID } from "./model/cards";
 
 export interface CardZone {
 	location: CardLocation,
