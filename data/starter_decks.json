@@ -1,0 +1,30 @@
+[
+	{
+		"collection": "system",
+		"key": "starter_decks",
+		"permission_read": 0,
+		"permission_write": 0,
+		"user_id": "00000000-0000-0000-0000-000000000000",
+		"value": {
+			"decks": [
+				{
+					"name": "Starter Deck",
+					"main": [
+						{ "code": 1, "count": 7 },
+						{ "code": 2, "count": 7 },
+						{ "code": 3, "count": 7 },
+						{ "code": 6, "count": 7 },
+						{ "code": 8, "count": 4 },
+						{ "code": 9, "count": 4 },
+						{ "code": 10, "count": 4 }
+					],
+					"recipe": [
+						{ "code": 4, "count": 5 },
+						{ "code": 5, "count": 5 },
+						{ "code": 7, "count": 5 }
+					]
+				}
+			]
+		}
+	}
+]

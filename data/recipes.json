@@ -57,6 +57,54 @@
 						}
 					}
 				]
+			},
+			"13": {
+				"slots": [
+					{
+						"min": 1,
+						"max": 2,
+						"condition": {
+							"type": "and",
+							"conditions": [
+								{
+									"type": "check_classes",
+									"classes": 2
+								},
+								{
+									"type": "not",
+									"condition": {
+										"type": "check_type",
+										"card_type": 1
+									}
+								}
+							]
+						}
+					}
+				]
+			},
+			"14": {
+				"slots": [
+					{
+						"min": 1,
+						"max": 2,
+						"condition": {
+							"type": "and",
+							"conditions": [
+								{
+									"type": "check_classes",
+									"classes": 8
+								},
+								{
+									"type": "not",
+									"condition": {
+										"type": "check_type",
+										"card_type": 1
+									}
+								}
+							]
+						}
+					}
+				]
 			}
 		}
 	}
