@@ -10,18 +10,25 @@
 				{
 					"name": "Starter Deck",
 					"main": [
-						{ "code": 1, "count": 7 },
-						{ "code": 2, "count": 7 },
-						{ "code": 3, "count": 7 },
-						{ "code": 6, "count": 7 },
+						{ "code": 2, "count": 6 },
+						{ "code": 3, "count": 6 },
+						{ "code": 6, "count": 6 },
+
+						{ "code": 1, "count": 5 },
+						{ "code": 12, "count": 5 },
+
 						{ "code": 8, "count": 4 },
 						{ "code": 9, "count": 4 },
-						{ "code": 10, "count": 4 }
+						{ "code": 10, "count": 4 },
+						{ "code": 15, "count": 4 }
 					],
 					"recipe": [
-						{ "code": 4, "count": 5 },
-						{ "code": 5, "count": 5 },
-						{ "code": 7, "count": 5 }
+						{ "code": 4, "count": 3 },
+						{ "code": 13, "count": 3 },
+						{ "code": 14, "count": 3 },
+
+						{ "code": 5, "count": 3 },
+						{ "code": 7, "count": 3 }
 					]
 				}
 			]

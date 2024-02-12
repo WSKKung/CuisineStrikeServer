@@ -96,7 +96,7 @@
 			},
 			"13": {
 				"name": "Smoked Bacon",
-				"type": 1,
+				"type": 3,
 				"classes": 2,
 				"grade": 1,
 				"power": 2,
@@ -106,8 +106,8 @@
 				"description": "Recipe: 1-2 non-Dish Meat\n(No ability)"
 			},
 			"14": {
-				"name": "Omelette",
-				"type": 1,
+				"name": "Omelette Maiden",
+				"type": 3,
 				"classes": 8,
 				"grade": 1,
 				"power": 1,
