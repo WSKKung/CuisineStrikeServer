@@ -5,6 +5,7 @@ import { PlayerPresences } from "./match_handler";
 import zod from "zod";
 import { Utility } from "./utility";
 import { CardCollection, CardItem, CollectionSchemas } from "./model/player_collections";
+import { DecklistConfiguration } from "./constants";
 
 export interface MatchMessageDispatcher {
 	dispatch(code: number, message: string, destinationPlayerIds?: Array<string> | null, senderId?: string | null, reliable?: boolean): void,
@@ -25,7 +26,7 @@ export interface GameStorageAccess {
 	readPlayerCardCollection(playerId: string): CardCollection,
 	addPlayerDeck(playerId: string, deck: Deck): void,
 	addCardToPlayerCollection(playerId: string, cards: Array<CardItem>): void,
-	updatePlayerDeck(playerId: string, deck: Deck, ignoreInvalid: boolean): void,
+	updatePlayerDeck(playerId: string, deck: Deck): void,
 	updatePlayerCardCollections(playerId: string, collection: CardCollection): void,
 	setPlayerActiveDeck(playerId: string, deckId: string): void,
 	deletePlayerDeck(playerId: string, deckId: string): void
@@ -59,29 +60,6 @@ export function createNakamaIDGenerator(nakamaAPI: nkruntime.Nakama): IDGenerato
 export type NakamaGameStorageAccessCreateOptions = {
 	nk: nkruntime.Nakama,
 	logger?: nkruntime.Logger
-}
-
-export const storageDataSchemas = {
-	recipe: zod.custom<Recipe>(),
-	deck: zod.custom<Deck>(),
-	cardProperties: zod.object({
-		name: zod.string(),
-		description: zod.string(),
-		type: zod.number().int().min(0),
-		grade: zod.number().int().min(0).optional(),
-		classes: zod.number().int().min(0).optional(),
-		power: zod.number().int().min(0).optional(),
-		health: zod.number().int().min(0).optional(),
-		bonus_power: zod.number().int().min(0).optional(),
-		bonus_health: zod.number().int().min(0).optional()
-	}),
-	starterDecks: zod.object({
-		decks: zod.array(zod.custom<Omit<Deck, "id">>())
-	}),
-	playerDecks: zod.object({
-		decks: zod.array(zod.custom<Deck>()),
-		activeIndex: zod.number().int()
-	})
 }
 
 export function createNakamaGameStorageAccess(options: NakamaGameStorageAccessCreateOptions): GameStorageAccess {
@@ -284,7 +262,22 @@ export namespace NakamaAdapter {
 
 			addPlayerDeck(playerId, deck) {
 				let decklist = this.readPlayerDecklist(playerId);
+				if (decklist.decks.length >= DecklistConfiguration.maxDeckCount) {
+					throw new Error(`Player reaches maximum deck count!`)
+				}
+				deck.valid = validateDeck(deck).valid;
 
+				decklist.decks.push(deck);
+				options.nk.storageWrite([
+					{
+						collection: PLAYER_COLLECTION,
+						key: DECKLIST_KEY,
+						userId: playerId,
+						value: decklist,
+						permissionRead: 2,
+						permissionWrite: 1
+					}
+				]);
 			},
 
 			addCardToPlayerCollection(playerId, cards) {
@@ -293,31 +286,26 @@ export namespace NakamaAdapter {
 				this.updatePlayerCardCollections(playerId, collection);
 			},
 	
-			updatePlayerDeck(playerId, deck, ignoreInvalid) {
+			updatePlayerDeck(playerId, deck) {
 				let decklist = this.readPlayerDecklist(playerId)
 				let oldDeckIndex = decklist.decks.findIndex(existingDeck => existingDeck.id === deck.id);
 				if (oldDeckIndex < 0) {
 					throw new Error(`Player try to edit a deck that does not exist!`)
 				}
 
-				if (!ignoreInvalid) {
-					let validateResult = validateDeck(deck);
-					if (!validateResult.valid) {
-						throw new Error(`Invalid deck content: ${validateResult.reason}`)
-					}
-				}
+				deck.valid = validateDeck(deck).valid;
 
 				decklist.decks[oldDeckIndex] = deck;
 				options.nk.storageWrite([
 					{
-						collection: "players",
+						collection: PLAYER_COLLECTION,
 						key: DECKLIST_KEY,
 						userId: playerId,
 						value: decklist,
 						permissionRead: 2,
 						permissionWrite: 1
 					}
-				])
+				]);
 			},
 
 			updatePlayerCardCollections(playerId, collection) {
@@ -334,6 +322,23 @@ export namespace NakamaAdapter {
 			},
 
 			setPlayerActiveDeck(playerId, deckId) {
+				let decklist = this.readPlayerDecklist(playerId);
+				let newActiveDeckIndex = decklist.decks.findIndex(deck => deck.id === deckId);
+				if (newActiveDeckIndex < 0) {
+					throw new Error("Player has no deck with specified id!");
+				}
+
+				decklist.activeIndex = newActiveDeckIndex;
+				options.nk.storageWrite([
+					{
+						collection: PLAYER_COLLECTION,
+						key: DECKLIST_KEY,
+						userId: playerId,
+						value: decklist,
+						permissionRead: 2,
+						permissionWrite: 1
+					}
+				]);
 	
 			},
 	

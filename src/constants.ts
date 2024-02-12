@@ -17,3 +17,7 @@ export const DeckConfiguration = {
 	},
 	maxDuplicates: 3
 }
+
+export const DecklistConfiguration = {
+	maxDeckCount: 10
+}

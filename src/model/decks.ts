@@ -7,7 +7,8 @@ export type Deck = {
 	id: string,
 	name: String,
 	main: Array<CardItem>,
-	recipe: Array<CardItem>
+	recipe: Array<CardItem>,
+	valid?: boolean
 }
 
 export type DeckPresetItem = {
