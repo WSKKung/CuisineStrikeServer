@@ -169,7 +169,7 @@ export namespace NakamaAdapter {
 							deckEntry.recipe.push({ id: options.nk.uuidv4(), code: cardData.code })
 						}
 					}
-
+					deckEntry.valid = validateDeck(deckEntry).valid;
 					starterDeck.push(deckEntry);
 				}
 				return starterDeck;
@@ -189,9 +189,9 @@ export namespace NakamaAdapter {
 				// if empty, initialize new deck for player
 				if (!rawData) {
 					// get a random starter deck to player
-					let starterDecks = this.readPlayerStarterDecks()
+					let starterDecks = this.readPlayerStarterDecks();
 					Utility.shuffle(starterDecks);
-					let obtainedDeck: Deck = starterDecks[0]
+					let obtainedDeck: Deck = starterDecks[0];
 					// create new player data
 					let newDecklist: Decklist = {
 						decks: [ obtainedDeck ],
@@ -222,8 +222,30 @@ export namespace NakamaAdapter {
 				if (!parseResult.success) {
 					throw new Error(`Invalid player decks data: ${parseResult.error.message}`)
 				}
+
+				let decklist: Decklist = parseResult.data;
+				// revalidate deck for unverified deck
+				let hasUnverifiedDeck = false;
+				for (let deck of decklist.decks) {
+					if (deck.valid === undefined) {
+						deck.valid = validateDeck(deck).valid;
+						hasUnverifiedDeck = true;
+					}
+				}
+				if (hasUnverifiedDeck) {
+					options.nk.storageWrite([
+						{
+							collection: PLAYER_COLLECTION,
+							key: DECKLIST_KEY,
+							userId: playerId,
+							value: decklist,
+							permissionRead: 2,
+							permissionWrite: 1
+						}
+					]);
+				}
 	
-				return parseResult.data;
+				return decklist;
 			},
 
 			readPlayerDecks(playerId: string) {
