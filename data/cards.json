@@ -120,7 +120,42 @@
 				"name": "Appetizing Aura",
 				"type": 4,
 				"description": "You heals HP equal to Power of your serving Dish."
-			}
+			},
+			"16": {
+				"name": "Barley",
+				"type": 2,
+				"classes": 1,
+				"grade": 1,
+				"description": "M"
+			},
+			"17": {
+				"name": "Rare Barley",
+				"type": 2,
+				"classes": 1,
+				"grade": 1,
+				"description": "MMMMMMMM"
+			},
+			"18": {
+				"name": "Tumblewheats",
+				"type": 2,
+				"classes": 1,
+				"grade": 1,
+				"description": "[ACTIVE] Discard this card and 1 card from your hand: Set 1 Grain Ingredient other than this card from your Trash, it also gains 1 Grade."
+			},
+			"19": {
+				"name": "Shleep",
+				"type": 2,
+				"classes": 2,
+				"grade": 1,
+				"description": "[ACTIVE] Discard this card and 1 card from your hand: Set 1 Meat Ingredient other than this card from your Trash, it also gains 1 Grade."
+			},
+			"20": {
+				"name": "U.F.Yolk",
+				"type": 2,
+				"classes": 8,
+				"grade": 1,
+				"description": "[ACTIVE] Discard this card and 1 card from your hand: Set 1 Egg Ingredient other than this card from your Trash, it also gains 1 Grade."
+			},
 		}
 	}
 ]
