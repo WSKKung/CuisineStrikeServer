@@ -57,6 +57,7 @@ export type Card = {
 	properties: CardProperties,
 	location: CardLocation,
 	column: number,
+	damage: number,
 	attacks: number
 }
 
@@ -87,6 +88,7 @@ export namespace Card {
 			properties,
 			location: CardLocation.VOID,
 			column: 0,
+			damage: 0,
 			attacks: 0
 		};
 		return card;
@@ -167,6 +169,10 @@ export namespace Card {
 	export function hasType(card: Card, type: CardType): boolean {
 		return BitField.any(getType(card), type);
 	}
+
+	export function isType(card: Card, type: CardType): boolean {
+		return BitField.all(getType(card), type);
+	}
 	
 	export function hasClass(card: Card, c_class: CardClass): boolean {
 		return BitField.any(getClass(card), c_class);
@@ -202,5 +208,22 @@ export namespace Card {
 	export function resetProperties(card: Card) {
 		card.properties = Utility.shallowClone(card.baseProperties);
 	}
+
+	export function canPosibblyActivateEffect(card: Card) {
+		switch (Card.getType(card)) {
+			case CardType.ACTION:
+			case CardType.TRIGGER:
+				return Card.hasLocation(card, CardLocation.HAND);
+			case CardType.INGREDIENT_DISH:
+				return Card.hasLocation(card, CardLocation.SERVE_ZONE | CardLocation.STANDBY_ZONE);
+			case CardType.DISH:
+				return Card.hasLocation(card, CardLocation.SERVE_ZONE);
+			case CardType.INGREDIENT:
+				return Card.hasLocation(card, CardLocation.STANDBY_ZONE);
+			default:
+				return false;
+		}
+	}
+
 }
 

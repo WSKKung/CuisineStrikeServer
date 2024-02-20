@@ -5,7 +5,7 @@ import { CollectionSchemas } from "./src/model/player_collections";
 import { dumpGameStateRPC, recipeCheckRPC } from "./src/test/test_rpcs";
 import { NakamaAdapter } from "./src/wrapper";
 import { addToCollectionRPC, getCollectionRPC } from "./src/controllers/card_collection";
-import { getDecklistRPC, updateDeckRPC, setActiveDeckRPC, validateDeckRPC, addDeckRPC } from "./src/controllers/deck_building";
+import { getDecklistRPC, updateDeckRPC, setActiveDeckRPC, validateDeckRPC, addDeckRPC, deleteDeckRPC } from "./src/controllers/deck_building";
 
 const InitModule: nkruntime.InitModule = function(ctx, logger, nk, initializer) {
 	logger.info("Typescript Runtime initializing");
@@ -23,11 +23,11 @@ const InitModule: nkruntime.InitModule = function(ctx, logger, nk, initializer) 
 	// Registers every testing RPC functions into the server
 	initializer.registerRpc("DebugRecipeCheck", recipeCheckRPC);
 	initializer.registerRpc("DebugDumpState", dumpGameStateRPC);
-
 	initializer.registerRpc("GetCardProperties", getCardPropertiesRPC);
 	initializer.registerRpc("GetDecklist", getDecklistRPC);
 	initializer.registerRpc("AddDeck", addDeckRPC);
 	initializer.registerRpc("UpdateDeck", updateDeckRPC);
+	initializer.registerRpc("DeleteDeck", deleteDeckRPC);
 	initializer.registerRpc("ValidateDeck", validateDeckRPC);
 	initializer.registerRpc("SetActiveDeck", setActiveDeckRPC);
 	

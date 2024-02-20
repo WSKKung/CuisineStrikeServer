@@ -5,10 +5,45 @@ import { CardLocation } from "./model/cards";
 import { GameConfiguration } from "./constants";
 import { ArrayUtil, BitField, Utility } from "./utility";
 import { BUFF_ID_DAMAGED, CardBuff, CardBuffResetCondition as CardBuffResetFlag } from "./buff";
+import { CardActivateEffect, CardEffect, CardEffectContext, CardEffectInstance, CardEffectProvider, CardEffectUseLimit } from "./effects/effect";
+import { Effect } from "zod";
 
 export interface GameResult {
 	winners: Array<string>,
 	reason: string
+}
+
+export type ChoiceRequest = ZoneChoiceRequest | CardChoiceRequest | YesNoChoiceRequest | OptionChoiceRequest
+
+export type ZoneChoiceRequest = {
+	type: "choose_zones",
+	playerId: string,
+	min: number,
+	max: number,
+	zones: Array<CardZone>,
+	callback: (chosenZones: Array<CardZone>) => void
+}
+
+export type CardChoiceRequest = {
+	type: "choose_cards",
+	playerId: string,
+	min: number,
+	max: number,
+	cards: Array<Card>,
+	callback: (chosenCards: Array<Card>) => void
+}
+
+export type YesNoChoiceRequest = {
+	type: "choose_yes_no",
+	playerId: string,
+	callback: (choice: boolean) => void
+}
+
+export type OptionChoiceRequest = {
+	type: "choose_option",
+	playerId: string,
+	options: Array<string>,
+	callback: (choice: number) => void
 }
 
 export interface GameState extends nkruntime.MatchState {
@@ -18,13 +53,16 @@ export interface GameState extends nkruntime.MatchState {
 	players: {[id: string]: PlayerData | undefined},
 	cards: {[id: CardID]: Card},
 	buffs: {[id: CardID]: Array<CardBuff>},
+	effects: {[id: CardID]: Array<CardEffectInstance>},
 	attackCount: {[id: CardID]: number}
 	status: "init" | "running" | "ended",
 	turnPlayer: string,
 	turnCount: number,
 	turnPhase: TurnPhase
 	endResult: GameResult | null,
-	eventQueue: Array<GameEvent>
+	eventQueue: Array<GameEvent>,
+	currentChoiceRequest?: ChoiceRequest,
+	nextHintMessage?: string
 }
 
 export interface PlayerData {
@@ -44,6 +82,7 @@ export interface PlayerData {
 		cards: Array<Card>,
 		callback: (chosenCards: Array<Card>) => void
 	},
+	timeout: number,
 	online: boolean
 }
 
@@ -56,32 +95,33 @@ export function getPlayerId(presence: nkruntime.Presence): string {
 export namespace Match {
 
 	function createPlayerData(id: string): PlayerData {
-		let hand = Field.createZone(CardLocation.HAND);
-		let mainDeck = Field.createZone(CardLocation.MAIN_DECK);
-		let recipeDeck = Field.createZone(CardLocation.RECIPE_DECK);
-		let trash = Field.createZone(CardLocation.TRASH);
+		let hand = Field.createZone(id, CardLocation.HAND);
+		let mainDeck = Field.createZone(id, CardLocation.MAIN_DECK);
+		let recipeDeck = Field.createZone(id, CardLocation.RECIPE_DECK);
+		let trash = Field.createZone(id, CardLocation.TRASH);
 		let serveZones: Array<CardZone> = [];
 		let standbyZone: Array<CardZone> = [];
 		for (let col = 0; col < GameConfiguration.boardColumns; col++) {
-			serveZones.push(Field.createZone(CardLocation.SERVE_ZONE, col));
-			standbyZone.push(Field.createZone(CardLocation.STANDBY_ZONE, col));
+			serveZones.push(Field.createZone(id, CardLocation.SERVE_ZONE, col));
+			standbyZone.push(Field.createZone(id, CardLocation.STANDBY_ZONE, col));
 		}
 		return {
 			id,
 			hp: GameConfiguration.initialHP,
 			prevHp: GameConfiguration.initialHP,
 			online: false,
+			timeout: GameConfiguration.timeout.fixed + GameConfiguration.timeout.byTurn,
 			hand, mainDeck, recipeDeck, trash, serveZones, standbyZone
 		};
 	}
 
-	
 	export function createState(): GameState {
 		return {
 			playerData: {},
 			players: {},
 			cards: {},
 			buffs: {},
+			effects: {},
 			status: "init",
 			turnPlayer: "",
 			turnCount: 0,
@@ -119,7 +159,8 @@ export namespace Match {
 
 	export function addCard(state: GameState, card: Card): void {
 		state.cards[card.id] = card;
-		state.buffs[card.id] = []
+		state.buffs[card.id] = [];
+		state.effects[card.id] = [];
 	}
 
 	export function updateCard(state: GameState, card: Card): void {
@@ -149,20 +190,61 @@ export namespace Match {
 		if (Card.getGrade(card) < 0) Card.setGrade(card, 0)
 	}
 
+	export function registerEffect(state: GameState, card: Card, effect: CardEffect): void {
+		let effect_instance = CardEffectInstance.create(effect, card);
+		if (effect.type === "activate") {
+			effect_instance.limits = CardEffectUseLimit.ONCE_PER_TURN;
+			effect_instance.satisfiedLimits = 0;
+		}
+		state.effects[card.id] = state.effects[card.id].concat(effect_instance);
+	}
+
+	export function getEffectByType(state: GameState, card: Card, type: CardEffect["type"]): Array<CardEffectInstance> {
+		return state.effects[card.id].filter(e => e.effect.type === type);
+	}
+
 	export function updateCards(state: GameState, cards: Array<Card>, reason: number, reasonPlayer: string) {
 		// Fires update hook
 		Match.discard(state, cards.filter(card => card.location === CardLocation.SERVE_ZONE && Card.getHealth(card) <= 0), "", EventReason.DESTROYED | reason);
 
 		state.eventQueue.push({ id: newUUID(state), type: "update_card", cards: cards, reason: reason, sourcePlayer: reasonPlayer })
 	}
+
+	export function isAbilityUseable(state: GameState, playerId: string, effect: CardEffectInstance): boolean {
+		let activateCtx: CardEffectContext = { state: state, player: playerId, card: effect.card };
+		return CardEffectInstance.canUse(effect) && Card.canPosibblyActivateEffect(effect.card) && effect.effect.type === "activate" && CardEffectInstance.checkCondition(effect, activateCtx);
+	}
+
+	export function hasUseableActivateAbility(state: GameState, playerId: string, card: Card): boolean {
+		return state.effects[card.id].some(e => isAbilityUseable(state, playerId, e));
+	}
 	
+	export function activateAbility(state: GameState, playerId: string, card: Card): void {
+		let activateCtx: CardEffectContext = { state: state, player: playerId, card: card };
+		let firstUseableEffect = state.effects[card.id].find(e => isAbilityUseable(state, playerId, e));
+		if (!firstUseableEffect) {
+			return;
+		}
+		
+		state.eventQueue.push({ id: Match.newUUID(state), player: playerId, type: "activate", card: card, reason: EventReason.ACTIVATE, sourcePlayer: playerId });
+
+		(firstUseableEffect.effect as CardActivateEffect).activate(activateCtx).then((_) => {
+			// discard if is action or trigger activated from hand
+			if (Card.hasType(card, CardType.ACTION | CardType.TRIGGER) && Card.hasLocation(card, CardLocation.HAND)) {
+				Match.discard(state, [card], playerId, EventReason.GAMERULE);
+			}
+
+			CardEffectInstance.setLimitReached(firstUseableEffect!, CardEffectUseLimit.ONCE_PER_TURN);
+		});
+	}
+
 	export function damage(state: GameState, cards: Array<Card>, amount: number, reason: EventReason, reasonPlayer: string) {
 		if (amount <= 0) return;
 		for (let card of cards) {
 			if (!Card.hasLocation(card, CardLocation.SERVE_ZONE)) {
 				continue;
 			}
-
+			card.damage += amount;
 			let damagedBuff: CardBuff = {
 				id: BUFF_ID_DAMAGED,
 				sourceCard: null,
@@ -225,6 +307,11 @@ export namespace Match {
 		state.eventQueue.push({ id: newUUID(state), type: "update_hp", sourcePlayer: reasonPlayer, player: playerId, reason: reason })
 	}
 
+	export function restoreHP(state: GameState, playerId: string, hp: number, reason: EventReason, reasonPlayer: string): void {
+		let oldHP = getHP(state, playerId);
+		setHP(state, playerId, oldHP + hp, reason, reasonPlayer);
+	}
+
 	export function setPresence(state: GameState, playerId: string, presence: nkruntime.Presence): void {
 		getPlayer(state, playerId).presence = presence;
    	}
@@ -285,7 +372,13 @@ export namespace Match {
 				state.log?.debug("card left the field: %s", Card.getName(card))
 				removeBuffs(state, [card], buff => BitField.any(buff.resets, CardBuffResetFlag.TARGET_REMOVED));
 				removeBuffs(state, getCards(state, CardLocation.ON_FIELD), buff => buff.sourceCard === card && BitField.any(buff.resets, CardBuffResetFlag.SOURCE_REMOVED));
+				// reset effect limit
+				for (let effect of state.effects[card.id]) {
+					CardEffectInstance.restoreAllLimits(effect);
+				}
+			
 			}
+		
 		});
 
 		cards.forEach(card => {
@@ -380,10 +473,9 @@ export namespace Match {
 	export function countCards(state: GameState, location: CardLocation, ownerId?: string, column?: number): number {
 		let targetZones = findZones(state, location, ownerId, column);
 		return targetZones.map(zone => zone.cards.length).reduce((prev, cur) => prev + cur, 0);
-		
 	}
 
-	export function findCards(state: GameState, filterCondition: (card: Card) => boolean, location: CardLocation, ownerId: string, column?: number): Array<Card> {
+	export function findCards(state: GameState, filterCondition: (card: Card) => boolean, location: CardLocation, ownerId?: string, column?: number): Array<Card> {
 		let targetZones = findZones(state, location, ownerId, column);
 		// Same as getCards but add filter mapping in-between map and reduce
 		return targetZones.map(zone => zone.cards).map(cards => cards.map(cardId => findCardByID(state, cardId)!)).map(cards => cards.filter(filterCondition)).reduce((prev, cur) => prev.concat(cur), []);
@@ -392,8 +484,8 @@ export namespace Match {
 	export function countFilterCards(state: GameState, filterCondition: (card: Card) => boolean, location: CardLocation, ownerId?: string, column?: number): number {
 		let targetZones = findZones(state, location, ownerId, column);
 		return targetZones.map(zone => zone.cards).map(cards => cards.map(cardId => findCardByID(state, cardId)!)).map(cards => cards.filter(filterCondition)).map(cards => cards.length).reduce((prev, cur) => prev + cur, 0);
-		
 	}
+
 	/**
 	 * Returns the first card with the specified id from a given game state
 	 * @param state 
@@ -477,10 +569,19 @@ export namespace Match {
 
 	export function endTurn(state: GameState): void {
 		removeBuffs(state, getCards(state, CardLocation.ON_FIELD), (buff) => BitField.any(buff.resets, CardBuffResetFlag.END_TURN));
+		for (let cardId in state.effects) {
+			for (let effect of state.effects[cardId]) {
+				CardEffectInstance.restoreLimit(effect, CardEffectUseLimit.ONCE_PER_TURN);
+			}
+		}
 	}
 
 	export function beginTurn(state: GameState): void {
 		let turnPlayer = getTurnPlayer(state);
+		// reset timer
+		let maxTimeout = GameConfiguration.timeout.fixed + GameConfiguration.timeout.byTurn
+		state.players[turnPlayer]!.timeout = Math.min(maxTimeout, (state.players[turnPlayer]!.timeout - GameConfiguration.timeout.fixed) + GameConfiguration.timeout.byTurn);
+
 		goToSetupPhase(state, turnPlayer);
 		fillHand(state, turnPlayer, GameConfiguration.drawSizePerTurns, 1);
 		resetPlayerCardAttackCount(state, turnPlayer);
@@ -516,11 +617,52 @@ export namespace Match {
 		return findZones(state, location, playerId, column).every(zone => zone.cards.length === 0);
 	}
 
+	export function isCardCanSetAsIngredient(state: GameState, card: Card): boolean {
+		if (!Card.hasType(card, CardType.INGREDIENT)) {
+			return false;
+		}
+		if (Card.hasType(card, CardType.DISH)) {
+			return Card.hasLocation(card, CardLocation.RECIPE_DECK | CardLocation.SERVE_ZONE);
+		}
+		return Card.hasLocation(card, CardLocation.HAND);
+	}
+
+	export function isCardCanCookSummon(state: GameState, card: Card): boolean {
+		return Card.hasType(card, CardType.DISH) && Card.hasLocation(card, CardLocation.RECIPE_DECK);
+	}
+
 	export function isCardCanAttack(state: GameState, card: Card): boolean {
+		if (!Card.hasLocation(card, CardLocation.SERVE_ZONE)) {
+			return false;
+		}
 		if (!isStrikePhase(state)) {
 			return false;
 		}
 		return card.attacks > 0
+	}
+
+	export function isCardCanActivateAbility(state: GameState, card: Card): boolean {
+		if (!Match.isSetupPhase(state) || !Match.isPlayerTurn(state, card.owner)) {
+			return false;
+		}
+		switch (Card.getType(card)) {
+			case CardType.ACTION:
+				if (!Card.hasLocation(card, CardLocation.HAND)) {
+					return false;
+				}
+				break;
+			case CardType.DISH:
+			case CardType.INGREDIENT:
+			case CardType.INGREDIENT_DISH:
+				if (!Card.hasLocation(card, CardLocation.ON_FIELD)) {
+					return false;
+				}
+				break;
+			default:
+				return false;
+		};
+
+		return hasUseableActivateAbility(state, card.owner, card);
 	}
 	
 	export function resetPlayerCardAttackCount(state: GameState, playerId: string) {
@@ -547,12 +689,12 @@ export namespace Match {
 		}
 		state.eventQueue.push({ id: newUUID(state), sourcePlayer: playerId, type: "attack", reason: EventReason.BATTLE, attackingCard: attackingCard, directAttack: false, targetCard: targetCard });
 		// TODO: Add hook event here
-
+		
+		
 		let targetPower = Card.getPower(targetCard);
 		let attackerPower = Card.getPower(attackingCard);
 		removeCardAttackCount(state, attackingCard);
 
-		state.log?.debug("battle(): targetPower: {%d}, attackerPower: {%d}", targetPower, attackerPower);
 		damage(state, [attackingCard], targetPower, EventReason.BATTLE, playerId);
 		damage(state, [targetCard], attackerPower, EventReason.BATTLE, playerId);
 	}
@@ -609,19 +751,87 @@ export namespace Match {
 		return result || null;
 	}
 
+	export function setSelectionHint(state: GameState, hintMessage: string): void {
+		state.nextHintMessage = hintMessage;
+	}
+
+	export function popSelectionHint(state: GameState): string {
+		let hint = state.nextHintMessage || "";
+		state.nextHintMessage = undefined;
+		return hint;
+	}
+
 	export async function makePlayerSelectCards(state: GameState, playerId: string, cards: Array<Card>, min: number, max: number = min): Promise<Array<Card>> {
-		state.eventQueue.push({ id: newUUID(state), type: "request_card_choice", sourcePlayer: "", player: playerId, cards: cards, min: min, max: max, reason: EventReason.UNSPECIFIED, hint: "none" })
+		state.eventQueue.push({ id: newUUID(state), type: "request_card_choice", sourcePlayer: playerId, player: playerId, cards: cards, min: min, max: max, reason: EventReason.UNSPECIFIED, hint: popSelectionHint(state) })
 		return new Promise((resolve) => {
-			let newRequest = {
+			let newRequest: ChoiceRequest = {
+				type: "choose_cards",
+				playerId: playerId,
 				min: min,
 				max: max,
 				cards: cards,
 				callback: (selectedCards: Array<Card>) => {
-					state.players[playerId]!.cardRequest = undefined
-					resolve(selectedCards)
+					state.currentChoiceRequest = undefined;
+					resolve(selectedCards);
 				}
-			}
-			state.players[playerId]!.cardRequest = newRequest
-		})
+			};
+			state.currentChoiceRequest = newRequest;
+			state.players[playerId]!.cardRequest = newRequest;
+		});
+	}
+
+	export async function makePlayerSelectFreeZone(state: GameState, playerId: string, location: number, ownerId: string = playerId): Promise<CardZone> {
+		let zones = findZones(state, location, ownerId).filter(zone => zone.cards.length === 0);
+		state.eventQueue.push({ id: newUUID(state), type: "request_zone_choice", sourcePlayer: playerId, player: playerId, zones: zones, min: 1, max: 1, reason: EventReason.UNSPECIFIED, hint: popSelectionHint(state) })
+		return new Promise((resolve) => {
+			let newRequest: ChoiceRequest = {
+				type: "choose_zones",
+				playerId: playerId,
+				min: 1,
+				max: 1,
+				zones: zones,
+				callback: (selectedZones: Array<CardZone>) => {
+					state.currentChoiceRequest = undefined;
+					resolve(selectedZones[0]);
+				}
+			};
+			state.currentChoiceRequest = newRequest;
+			
+		});
+	}
+
+	export async function makePlayerSelectYesNo(state: GameState, playerId: string): Promise<boolean> {
+		state.eventQueue.push({ id: newUUID(state), type: "request_yes_no", sourcePlayer: playerId, player: playerId, reason: EventReason.UNSPECIFIED, hint: popSelectionHint(state) })
+		return new Promise((resolve) => {
+			let newRequest: ChoiceRequest = {
+				type: "choose_yes_no",
+				playerId: playerId,
+				callback: (choice: boolean) => {
+					state.currentChoiceRequest = undefined;
+					resolve(choice);
+				}
+			};
+			state.currentChoiceRequest = newRequest;
+		});
+	}
+
+	export async function makePlayerSelectOption(state: GameState, playerId: string, options: Array<string>): Promise<number> {
+		state.eventQueue.push({ id: newUUID(state), type: "request_option_choice", sourcePlayer: playerId, player: playerId, options: options, reason: EventReason.UNSPECIFIED, hint: popSelectionHint(state) })
+		return new Promise((resolve) => {
+			let newRequest: ChoiceRequest = {
+				type: "choose_option",
+				playerId: playerId,
+				options: options,
+				callback: (choice: number) => {
+					state.currentChoiceRequest = undefined;
+					resolve(choice);
+				}
+			};
+			state.currentChoiceRequest = newRequest;
+		});
+	}
+
+	export function isWaitingPlayerChoice(state: GameState, playerId?: string): boolean {
+		return !!state.currentCardRequest && (!playerId || state.currentCardRequest.playerId === playerId);
 	}
 }

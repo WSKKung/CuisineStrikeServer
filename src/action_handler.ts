@@ -2,12 +2,12 @@ import { GameState, Match, TurnPhase } from "./match";
 import { GameStorageAccess } from "./wrapper";
 import { DishSummonProcedure } from "./cards/cook_summon_procedure";
 import { Recipe } from "./model/recipes";
-import { CardLocation, Card } from "./model/cards";
+import { CardLocation, Card, CardType } from "./model/cards";
 import zod from "zod";
 import { GameConfiguration } from "./constants";
-import { SetIngredientActionParams, CookSummonActionParams, AttackActionParams, ActionType, actionSchemas, ActivateActionCardParams, ChooseCardsParams } from "./action_schema";
+import { SetIngredientActionParams, CookSummonActionParams, AttackActionParams, ActionType, actionSchemas, ActivateActionCardParams, ChooseCardsParams, getPlayerActionSchemaByType, PlayerActionParams, PlayerActionParamsActivate, PlayerActionParamsChooseCards, PlayerActionParamsAttack, PlayerActionParamsCookSummon, PlayerActionParamsSetIngredient, PlayerActionParamsToStrikePhase, PlayerActionParamsEndTurn, PlayerActionParamsChooseZones, PlayerActionParamsChooseYesNo, PlayerActionParamsChooseOption } from "./action_schema";
 import { BUFF_ID_OVERGRADED, CardBuff, CardBuffResetCondition } from "./buff";
-import { CardEffectProvider, CardEffectContext } from "./effects/effect";
+import { CardEffectProvider, CardEffectContext, CardActivateEffect } from "./effects/effect";
 import { registerCardEffectScripts } from "./scripts";
 import { EventReason } from "./events";
 
@@ -28,9 +28,21 @@ export interface ActionHandleContext {
 	senderId: string
 }
 
-export type ActionHandleFunction<ParamType = any> = (context: ActionHandleContext, params: ParamType) => ActionHandlerResult
+export type TypedActionHandleFunction<T extends ActionType> = ActionHandleFunction<PlayerActionParams & { type: T }>
 
-type ActionParamSchema<ParamType extends zod.ZodRawShape> = zod.AnyZodObject
+export type ActionHandleFunction<ParamType = any> = {
+	(context: ActionHandleContext, params: ParamType): ActionHandlerResult
+}
+
+// middleware to validate action available on open state
+function validateOpenState(next: ActionHandleFunction): ActionHandleFunction {
+	return (context, params) => {
+		if (context.gameState.currentChoiceRequest != null) {
+			return { success: false, data: { reason: "NOT_AVAILABLE" } };
+		}
+		return next(context, params);
+	}
+}
 
 // middleware to validate turn player action
 function validateTurnPlayer(next: ActionHandleFunction): ActionHandleFunction {
@@ -53,9 +65,10 @@ function validatePhase(phase: TurnPhase, next: ActionHandleFunction): ActionHand
 }
 
 // middleware to validate type of each properties in params object
-function validateParams<ParamType>(schema: zod.ZodType<ParamType>, next: ActionHandleFunction<ParamType>): ActionHandleFunction<ParamType> {
+function validateParams<T extends ActionType>(type: T, next: TypedActionHandleFunction<T>): TypedActionHandleFunction<T> {
 	return (context, params) => {
 		try {
+			let schema = getPlayerActionSchemaByType(type)
 			let result = schema.parse(params);
 			return next(context, result);
 		}
@@ -65,12 +78,12 @@ function validateParams<ParamType>(schema: zod.ZodType<ParamType>, next: ActionH
 		}
 	};
 }
-const endTurnActionHandler: ActionHandleFunction = (context, params) => {
+const endTurnActionHandler: ActionHandleFunction<PlayerActionParamsEndTurn> = (context, params) => {
 	Match.gotoNextTurn(context.gameState, context.senderId);
 	return { success: true };
 }
 
-const goToStrikePhaseActionHandler: ActionHandleFunction = (context, params) => {
+const goToStrikePhaseActionHandler: ActionHandleFunction<PlayerActionParamsToStrikePhase> = (context, params) => {
 	if (!Match.isSetupPhase(context.gameState)) {
 		return { success: false, data: { reason: "INVALID_PHASE" } };
 	}
@@ -78,7 +91,7 @@ const goToStrikePhaseActionHandler: ActionHandleFunction = (context, params) => 
 	return { success: true };
 }
 
-const setIngredientHandler: ActionHandleFunction<SetIngredientActionParams> = (context, params) => {
+const setIngredientHandler: ActionHandleFunction<PlayerActionParamsSetIngredient> = (context, params) => {
 	let state = context.gameState;
 	let playerId = context.senderId;
 
@@ -94,7 +107,7 @@ const setIngredientHandler: ActionHandleFunction<SetIngredientActionParams> = (c
 	// check card properties if can be set
 	if (
 		Card.getOwner(cardToBeSet!) !== playerId ||
-		!Card.isAbleToSetAsIngredient(cardToBeSet!)
+		!Match.isCardCanSetAsIngredient(state, cardToBeSet!)
 	) {
 		return { success: false, data: { reason: "TARGET_CARD_CANNOT_BE_SET" } };
 	}
@@ -135,7 +148,7 @@ const setIngredientHandler: ActionHandleFunction<SetIngredientActionParams> = (c
 	return { success: true , data: { card: cardIdToBeSet, column: columnToBeSet, materials: materialsId } };
 }
 
-const dishSummonHandler: ActionHandleFunction<CookSummonActionParams> = (context, params) => {
+const dishSummonHandler: ActionHandleFunction<PlayerActionParamsCookSummon> = (context, params) => {
 	let state = context.gameState;
 	let playerId = context.senderId;
 
@@ -155,7 +168,7 @@ const dishSummonHandler: ActionHandleFunction<CookSummonActionParams> = (context
 	// check if player can actually summon the given cards
 	if (
 		Card.getOwner(cardToSummon) !== playerId ||
-		!Card.hasLocation(cardToSummon, CardLocation.RECIPE_DECK)
+		!Match.isCardCanCookSummon(state, cardToSummon)
 	) {
 		return { success: false, data: { reason: "TARGET_CARD_CANNOT_SUMMON" } };
 	}
@@ -210,7 +223,7 @@ const dishSummonHandler: ActionHandleFunction<CookSummonActionParams> = (context
 			type: "grade",
 			operation: "add",
 			amount: bonus_grade,
-			resets: CardBuffResetCondition.SOURCE_REMOVED
+			resets: CardBuffResetCondition.SOURCE_REMOVED | CardBuffResetCondition.TARGET_REMOVED
 		}
 		Match.addBuff(state, [cardToSummon!], overgradedBuff);		
 	}
@@ -219,7 +232,7 @@ const dishSummonHandler: ActionHandleFunction<CookSummonActionParams> = (context
 }
 
 
-const attackActionHandler: ActionHandleFunction<AttackActionParams> = (context, params) => {
+const attackActionHandler: ActionHandleFunction<PlayerActionParamsAttack> = (context, params) => {
 	let state = context.gameState;
 	let playerId = context.senderId;
 	let opponent = Match.getOpponent(state, playerId);
@@ -236,8 +249,7 @@ const attackActionHandler: ActionHandleFunction<AttackActionParams> = (context, 
 	}
 
 	if (
-		Card.getOwner(attackingCard) !== playerId ||
-		!Card.hasLocation(attackingCard, CardLocation.SERVE_ZONE)
+		Card.getOwner(attackingCard) !== playerId
 	) {
 		return { success: false, data: { reason: "TARGET_CARD_INVALID" } };
 	}
@@ -278,7 +290,7 @@ const attackActionHandler: ActionHandleFunction<AttackActionParams> = (context, 
 	return { success: true, data: { } };
 }
 
-const activateActionCardHandler: ActionHandleFunction<ActivateActionCardParams> = (context, params) => {
+const activateActionCardHandler: ActionHandleFunction<PlayerActionParamsActivate> = (context, params) => {
 	let state = context.gameState;
 	let playerId = context.senderId;
 	let activatedCardId: string = params.card;
@@ -289,55 +301,39 @@ const activateActionCardHandler: ActionHandleFunction<ActivateActionCardParams> 
 
 	if (
 		Card.getOwner(activatedCard) != playerId ||
-		Card.getLocation(activatedCard) != CardLocation.HAND
+		!Card.canPosibblyActivateEffect(activatedCard)
 	) {
 		return { success: false, data: { reason: "TARGET_CARD_INVALID" } };
 	}
 	
 	state.log?.debug("Player attempted to activate cards with code: %d", Card.getCode(activatedCard))
-	//state.log?.debug("Before register: %s", JSON.stringify(CardEffectProvider.effects))
-	//registerCardEffectScripts()
-	//state.log?.debug("Current register: %s", JSON.stringify(CardEffectProvider.effects))
-
-
-	let activatedEffect = CardEffectProvider.getEffect(Card.getCode(activatedCard));
-	if (!activatedEffect) {
-		return { success: false, data: { reason: "TARGET_CARD_HAS_NO_EFFECT" } };
-	}
-
-	let activationContext: CardEffectContext = { state: context.gameState, player: context.senderId, card: activatedCard }
 
 	// check activation condition
-	if (!activatedEffect.condition(activationContext)) {
-		return { success: false, data: { reason: "CONDITION_NOT_MET" } };
+	if (!Match.isCardCanActivateAbility(state, activatedCard)) {
+		return { success: false, data: { reason: "TARGET_CARD_CANNOT_USE_ABILITY" } };
 	}
 
-	state.eventQueue.push({ id: Match.newUUID(state), player: playerId, type: "activate", card: activatedCard, reason: EventReason.ACTIVATE, sourcePlayer: playerId })
+	Match.activateAbility(state, playerId, activatedCard);
 
-	// run card activate script
-	activatedEffect.activate(activationContext).then((_) => {
-		Match.discard(state, [activatedCard!], playerId, EventReason.GAMERULE);
-	});
-
-	return { success: true, data: { } };
+	return { success: true, data: {} };
 }
 
-const chooseCardsHandler: ActionHandleFunction<ChooseCardsParams> = (context, params) => {
+const chooseCardsHandler: ActionHandleFunction<PlayerActionParamsChooseCards> = (context, params) => {
 	let state = context.gameState;
 	let playerId = context.senderId;
-	let cardRequest = Match.getPlayer(state, playerId).cardRequest;
-	if (!cardRequest) {
-		return { success: false, data: { reason: "CARD_CHOICES_NOT_REQUESTED" }}
+	let cardRequest = state.currentChoiceRequest;
+	if (!cardRequest || cardRequest.type !== "choose_cards" || cardRequest.playerId !== playerId) {
+		return { success: false, data: { reason: "CHOICE_NOT_REQUESTED" }};
 	}
 	
 	let chosenCardIds: string[] = params.cards as string[]
 	if (chosenCardIds.length < cardRequest.min || chosenCardIds.length > cardRequest.max) {
-		return { success: false, data: { reason: "INVALID_CARD_CHOICES" }}
+		return { success: false, data: { reason: "INVALID_CARD_CHOICE" }};
 	}
 
 	for (let selectedCardId of chosenCardIds) {
 		if (cardRequest.cards.every(card => card.id !== selectedCardId)) {
-			return { success: false, data: { reason: "INVALID_CARD_CHOICES" }}
+			return { success: false, data: { reason: "INVALID_CARD_CHOICE" }};
 		}
 	}
 
@@ -346,22 +342,81 @@ const chooseCardsHandler: ActionHandleFunction<ChooseCardsParams> = (context, pa
 	return { success: true, data: {} };
 }
 
+const chooseZonesHandler: ActionHandleFunction<PlayerActionParamsChooseZones> = (context, params) => {
+	let state = context.gameState;
+	let playerId = context.senderId;
+	let cardRequest = state.currentChoiceRequest;
+	if (!cardRequest || cardRequest.type !== "choose_zones" || cardRequest.playerId !== playerId) {
+		return { success: false, data: { reason: "CHOICE_NOT_REQUESTED" }};
+	}
+	
+	let chosenZones = params.zones
+	if (chosenZones.length < cardRequest.min || chosenZones.length > cardRequest.max) {
+		return { success: false, data: { reason: "INVALID_ZONE_CHOICE" }};
+	}
+
+	for (let zone of chosenZones) {
+		if (cardRequest.zones.every(optionZone => optionZone.location !== zone.location || optionZone.column !== zone.column )) {
+			return { success: false, data: { reason: "INVALID_ZONE_CHOICE" }};
+		}
+	}
+
+	cardRequest.callback(chosenZones.map(z => Match.findZones(context.gameState, z.location, z.owner, z.column)[0]))
+
+	return { success: true, data: {} };
+}
+
+
+const chooseYesNoHandler: ActionHandleFunction<PlayerActionParamsChooseYesNo> = (context, params) => {
+	let state = context.gameState;
+	let playerId = context.senderId;
+	let cardRequest = state.currentChoiceRequest;
+	if (!cardRequest || cardRequest.type !== "choose_yes_no" || cardRequest.playerId !== playerId) {
+		return { success: false, data: { reason: "CHOICE_NOT_REQUESTED" }};
+	}
+	
+	cardRequest.callback(params.choice)
+
+	return { success: true, data: {} };
+}
+
+const chooseOptionHandler: ActionHandleFunction<PlayerActionParamsChooseOption> = (context, params) => {
+	let state = context.gameState;
+	let playerId = context.senderId;
+	let cardRequest = state.currentChoiceRequest;
+	if (!cardRequest || cardRequest.type !== "choose_option" || cardRequest.playerId !== playerId) {
+		return { success: false, data: { reason: "CHOICE_NOT_REQUESTED" }};
+	}
+	
+	cardRequest.callback(params.choice)
+
+	return { success: true, data: {} };
+}
+
 export function getActionHandler(type: ActionType): ActionHandleFunction | null {
+	//let paramSchema = getPlayerActionSchemaByType(type);
+	//let handler: ActionHandleFunction | null = null;
 	switch (type) {
 		case "end_turn":
-			return validateTurnPlayer(endTurnActionHandler);
+			return validateOpenState(validateTurnPlayer(validateParams(type, endTurnActionHandler)));
 		case "go_to_strike_phase":
-			return validatePhase("setup", validateTurnPlayer(goToStrikePhaseActionHandler));
+			return validateOpenState(validatePhase("setup", validateTurnPlayer(validateParams(type, goToStrikePhaseActionHandler))));
 		case "set_ingredient":
-			return validatePhase("setup", validateTurnPlayer(validateParams(actionSchemas.setIngredient, setIngredientHandler)));
+			return validateOpenState(validatePhase("setup", validateTurnPlayer(validateParams(type, setIngredientHandler))));
 		case "cook_summon":
-			return validatePhase("setup", validateTurnPlayer(validateParams(actionSchemas.cookSummon, dishSummonHandler)));
+			return validateOpenState(validatePhase("setup", validateTurnPlayer(validateParams(type, dishSummonHandler))));
 		case "attack":
-			return validatePhase("strike", validateTurnPlayer(validateParams(actionSchemas.attack, attackActionHandler)));
-		case "activate_action":
-			return validateTurnPlayer(validateParams(actionSchemas.activateAction, activateActionCardHandler))
+			return validateOpenState(validatePhase("strike", validateTurnPlayer(validateParams(type, attackActionHandler))));
+		case "activate":
+			return validateOpenState(validateTurnPlayer(validateParams(type, activateActionCardHandler)));
 		case "choose_cards":
-			return validateParams(actionSchemas.chooseCards, chooseCardsHandler)
+			return validateParams(type, chooseCardsHandler);
+		case "choose_zones":
+			return validateParams(type, chooseZonesHandler);
+		case "choose_yes_no":
+			return validateParams(type, chooseYesNoHandler);
+		case "choose_option":
+			return validateParams(type, chooseOptionHandler);
 		default:
 			return null
 	}

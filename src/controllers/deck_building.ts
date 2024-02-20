@@ -60,8 +60,14 @@ export const updateDeckRPC: nkruntime.RpcFunction = function(ctx, logger, nk, pa
 }
 
 export const deleteDeckRPC: nkruntime.RpcFunction = function(ctx, logger, nk, payload) {
-	let params = JSON.parse(payload);
+	let payloadParseResult = RPCSchemas.deleteDeck.safeParse(JSON.parse(payload));
+	if (!payloadParseResult.success) {
+		throw new Error("Invalid argument");
+	}
+
+	let args = payloadParseResult.data;
 	let storage = NakamaAdapter.storageAccess({ nk, logger });
+	storage.deletePlayerDeck(ctx.userId, args.deckId);
 }
 
 export const setActiveDeckRPC: nkruntime.RpcFunction = function(ctx, logger, nk, payload) {

@@ -1,6 +1,6 @@
 import { error } from "console";
 import { getActionHandler, ActionHandlerResult, ActionHandleContext, ActionHandleFunction } from "../action_handler";
-import { ActionType } from "../action_schema";
+import { ActionType, getPlayerActionSchemaByType } from "../action_schema";
 import { GameState, Match } from "../match";
 import { MatchMessageDispatcher, GameStorageAccess } from "../wrapper";
 import { MatchEventCode, PlayerActionCode } from "./event_codes";

@@ -365,7 +365,28 @@ export namespace NakamaAdapter {
 			},
 	
 			deletePlayerDeck(playerId, deckId) {
-				
+				let decklist = this.readPlayerDecklist(playerId);
+				let deletedDeckIndex = decklist.decks.findIndex(deck => deck.id === deckId);
+				if (deletedDeckIndex < 0) {
+					throw new Error("Player has no deck with specified id!");
+				}
+			
+				decklist.decks = decklist.decks.filter(deck => deck.id !== deckId);
+				// Automatically select first remaining deck when delete the active deck
+				if (deletedDeckIndex === decklist.activeIndex) {
+					decklist.activeIndex = 0;
+				}
+				options.nk.storageWrite([
+					{
+						collection: PLAYER_COLLECTION,
+						key: DECKLIST_KEY,
+						userId: playerId,
+						value: decklist,
+						permissionRead: 2,
+						permissionWrite: 1
+					}
+				]);
+
 			},
 	
 		}

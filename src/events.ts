@@ -1,3 +1,4 @@
+import { CardZone } from "./field";
 import { Card } from "./model/cards";
 
 
@@ -76,7 +77,27 @@ export type GameEvent = {
 			min: number
 			max: number
 			hint: string
-		})
+		} |
+		{
+			type: "request_zone_choice"
+			player: string
+			zones: Array<CardZone>
+			min: number
+			max: number
+			hint: string
+		} |
+		{
+			type: "request_yes_no"
+			player: string
+			hint: string
+		} |
+		{
+			type: "request_option_choice"
+			player: string
+			options: Array<string>
+			hint: string
+		}
+		)
 
 export enum EventReason {
 	UNSPECIFIED = 0,
