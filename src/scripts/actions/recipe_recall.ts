@@ -9,12 +9,13 @@ function recycleFilter(card: Card) {
 }
 
 const RECIPE_RECALL_EFFECT: CardEffect = {
-	type: "active",
+	type: "activate",
 	condition(context) {
 		return Match.countFilterCards(context.state, recycleFilter, CardLocation.TRASH, context.player) > 0;
 	},
 
 	async activate(context) {
+		Match.setSelectionHint(context.state, "HINT_SELECT_RECYCLE")
 		let cardOptions = Match.findCards(context.state, recycleFilter, CardLocation.TRASH, context.player);
 		let choice: Array<Card> = await Match.makePlayerSelectCards(context.state, context.player, cardOptions, 1, 1);
 		Match.sendToDeck(context.state, choice, context.player, "shuffle", EventReason.EFFECT);

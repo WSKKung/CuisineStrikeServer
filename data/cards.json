@@ -33,10 +33,10 @@
 				"classes": 4,
 				"grade": 1,
 				"power": 1,
-				"health": 4,
-				"bonusPower": 1,
+				"health": 2,
+				"bonusPower": 0,
 				"bonusHealth": 2,
-				"description": "Recipe: 1-2 Wheats\n(No ability)"
+				"description": "Recipe: 1-2 Wheats\n[ACTIVE] While being Served and Grade 3 or higher, this card gains 2 Power this turn."
 			},
 			"5": {
 				"name": "Hamburger",
@@ -47,7 +47,7 @@
 				"health": 4,
 				"bonusPower": 2,
 				"bonusHealth": 1,
-				"description": "Recipe: 1 \"Cow\" + 1 Bread\n(No ability)"
+				"description": "Recipe: 1 \"Cow\" + 1 Bread\n[ACTIVE] Deals damage to opponent's Served Unit equal to half this card's Power (round down). This card cannot attack this turn."
 			},
 			"6": {
 				"name": "Egg",
@@ -57,7 +57,7 @@
 				"description": "An egg."
 			},
 			"7": {
-				"name": "Bacon and Egg",
+				"name": "Bacon and Egg Warrior",
 				"type": 1,
 				"classes": 10,
 				"grade": 2,
@@ -65,7 +65,7 @@
 				"health": 3,
 				"bonusPower": 1,
 				"bonusHealth": 1,
-				"description": "Recipe: 1 Meat + 1 Egg\n(No ability)"
+				"description": "Recipe: 1 Meat + 1 Egg\n[ACTIVE] All your Dishes gains Power equal to this card's Bonus Grade this turn."
 			},
 			"8": {
 				"name": "Pepper Up",
@@ -95,7 +95,7 @@
 				"description": "wwwwwww"
 			},
 			"13": {
-				"name": "Smoked Bacon",
+				"name": "Smoked Bacon Boar",
 				"type": 3,
 				"classes": 2,
 				"grade": 1,
@@ -103,7 +103,7 @@
 				"health": 2,
 				"bonusPower": 1,
 				"bonusHealth": 1,
-				"description": "Recipe: 1-2 non-Dish Meat\n(No ability)"
+				"description": "Recipe: 1-2 non-Dish Meat\n[ACTIVE]: While being Served, send your top deck to the trash. If the sent card is an Ingredient card, this card gains Power equal to 2 x [the Grade of sent card] this turn."
 			},
 			"14": {
 				"name": "Omelette Maiden",
@@ -111,10 +111,10 @@
 				"classes": 8,
 				"grade": 1,
 				"power": 1,
-				"health": 2,
+				"health": 3,
 				"bonusPower": 1,
 				"bonusHealth": 2,
-				"description": "Recipe: 1-2 non-Dish Egg\n(No ability)"
+				"description": "Recipe: 1-2 non-Dish Egg\n[ACTIVE]: While being Served, recycle 1 Dish from your trash, gains HP equal to Power of the recycled Dish."
 			},
 			"15": {
 				"name": "Appetizing Aura",
@@ -132,7 +132,7 @@
 				"name": "Rare Barley",
 				"type": 2,
 				"classes": 1,
-				"grade": 1,
+				"grade": 2,
 				"description": "MMMMMMMM"
 			},
 			"18": {
@@ -143,7 +143,7 @@
 				"description": "[ACTIVE] Discard this card and 1 card from your hand: Set 1 Grain Ingredient other than this card from your Trash, it also gains 1 Grade."
 			},
 			"19": {
-				"name": "Shleep",
+				"name": "Dreamy Shleep",
 				"type": 2,
 				"classes": 2,
 				"grade": 1,
@@ -156,6 +156,46 @@
 				"grade": 1,
 				"description": "[ACTIVE] Discard this card and 1 card from your hand: Set 1 Egg Ingredient other than this card from your Trash, it also gains 1 Grade."
 			},
+			"21": {
+				"name": "Large Egg",
+				"type": 2,
+				"classes": 8,
+				"grade": 2,
+				"description": "An egg that is quite large."
+			},
+			"22": {
+				"name": "Quiche Guard",
+				"type": 1,
+				"classes": 9,
+				"grade": 2,
+				"power": 2,
+				"health": 5,
+				"bonusPower": 1,
+				"bonusHealth": 2,
+				"description": "Recipe: 1 Grain + 1 Egg.\n(No ability)"
+			},
+			"23": {
+				"name": "Beef Cannon Wellington",
+				"type": 1,
+				"classes": 6,
+				"grade": 3,
+				"power": 2,
+				"health": 5,
+				"bonusPower": 1,
+				"bonusHealth": 1,
+				"description": "Recipe: \"Bread\" + 1 Meat.\n[ACTIVE]: Send your top deck to the trash. If the sent card is an Ingredient card, this card gains Health equal to 2 x [the Grade of sent card] this turn"
+			},
+			"24": {
+				"name": "Rib-Eyes Dragon",
+				"type": 1,
+				"classes": 2,
+				"grade": 4,
+				"power": 7,
+				"health": 7,
+				"bonusPower": 1,
+				"bonusHealth": 1,
+				"description": "Recipe: \"Cow\" + 1 Meat\n[ACTIOVE] Deals 2 damage to all opponent's Units."
+			}
 		}
 	}
 ]
