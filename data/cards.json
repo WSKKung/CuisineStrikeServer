@@ -85,7 +85,7 @@
 			"11": {
 				"name": "Fork Trap",
 				"type": 8,
-				"description": "When your opponent's card attacks. Deals 5 damage to the attacking card."
+				"description": "When your opponent's card attacks. Deals 5 damage to it."
 			},
 			"12": {
 				"name": "Rare Wheat",
@@ -186,7 +186,7 @@
 				"description": "Recipe: \"Bread\" + 1 Meat.\n[ACTIVE]: Send your top deck to the trash. If the sent card is an Ingredient card, this card gains Health equal to 2 x [the Grade of sent card] this turn"
 			},
 			"24": {
-				"name": "Rib-Eyes Dragon",
+				"name": "Rib-Eyes Steak Dragon",
 				"type": 1,
 				"classes": 2,
 				"grade": 4,
@@ -194,7 +194,12 @@
 				"health": 7,
 				"bonusPower": 1,
 				"bonusHealth": 1,
-				"description": "Recipe: \"Cow\" + 1 Meat\n[ACTIOVE] Deals 2 damage to all opponent's Units."
+				"description": "Recipe: \"Cow\" + 1 Meat\n[ACTIVE] Deals 2 damage to all opponent's Units."
+			},
+			"25": {
+				"name": "Dish Cover",
+				"type": 8,
+				"description": "When your opponent's card attacks. Negate the attack."
 			}
 		}
 	}
