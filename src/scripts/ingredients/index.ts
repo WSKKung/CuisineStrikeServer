@@ -1,4 +1,4 @@
-import { CardEffect } from "../../effects/effect"
+import { CardEffect } from "../../model/effect"
 import DREAMY_SHLEEP_EFFECT from "./dreamy_shleep";
 import TUMBLEWHEAT_EFFECT from "./tumblewheats";
 import UFYOLK_EFFECT from "./ufyolk";

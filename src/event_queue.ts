@@ -1,5 +1,5 @@
 import { CardID } from "./model/cards"
-import { GameEvent } from "./events"
+import { GameEvent } from "./model/events"
 import { GameState } from "./match"
 
 export type GameEventType = GameEvent["type"]

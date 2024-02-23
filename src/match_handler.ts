@@ -2,7 +2,7 @@ import { Card, CardLocation, CardType } from "./model/cards";
 import { receivePlayerMessage } from "./communications/receiver";
 import { broadcastMatchState, broadcastMatchEvent, broadcastMatchEnd, broadcastUpdateAvailabeActions } from "./communications/sender";
 import { GameEventListener, GameEventType, createGameEventListener } from "./event_queue";
-import { EventReason, GameEvent } from "./events";
+import { EventReason, GameEvent } from "./model/events";
 import { GameState, Match, getPlayerId } from "./match";
 import { createNakamaIDGenerator, createNakamaMatchDispatcher, NakamaAdapter } from "./wrapper";
 import { GameConfiguration } from "./constants";
@@ -10,7 +10,7 @@ import { Utility } from "./utility";
 import { GameEventHandler, createEventHandler, setupBaseMechanicsEventHandler } from "./event_handler";
 import { registerCardEffectScripts } from "./scripts";
 import { Deck } from "./model/decks";
-import { CardEffect, CardEffectProvider } from "./effects/effect";
+import { CardEffect, CardEffectProvider } from "./model/effect";
 
 export type PlayerPresences = {[playerId: string]: nkruntime.Presence | undefined}
 
@@ -222,8 +222,6 @@ const matchLoop: nkruntime.MatchLoopFunction = function(ctx, logger, nk, dispatc
 
 			// copy event queue from game state
 			let currentEventQueue = [ ...gameState.eventQueue ];
-			let opponentTriggerableEffects: Array<{ effect: CardEffect, card: Card }> = [];
-			let playerTriggerableEffects: Array<{ effect: CardEffect, card: Card }> = [];
 			// clear current event queue for upcoming events
 			gameState.eventQueue.splice(0);
 			//logger.debug("t %d: processing match events checking", tick);
@@ -237,22 +235,6 @@ const matchLoop: nkruntime.MatchLoopFunction = function(ctx, logger, nk, dispatc
 					broadcastMatchEvent(gameState, matchDispatcher, event);
 					// handling current event
 					// new event caused here will be processed in the next tick
-
-					// collect every trigger effect that can be activated in response this event
-					let triggerCards = Match.findCards(gameState, card => Card.hasType(card, CardType.TRIGGER), CardLocation.HAND);
-					for (let card of triggerCards) {
-						let effects = CardEffectProvider.getEffect(Card.getCode(card), "trigger");
-						for (let effect of effects) {
-							if (effect.condition({ state: gameState, player: card.owner, card: card, event: event })) {
-								if (Match.isPlayerTurn(gameState, card.owner)) {
-									playerTriggerableEffects.push({ effect: effect, card: card });
-								}
-								else {
-									opponentTriggerableEffects.push({ effect: effect, card: card });
-								}
-							}
-						}
-					}
 				}
 				// update available action
 				broadcastUpdateAvailabeActions(gameState, matchDispatcher);
@@ -263,11 +245,6 @@ const matchLoop: nkruntime.MatchLoopFunction = function(ctx, logger, nk, dispatc
 			// has at least one player who is dead
 			if (alivePlayer.length < players.length) {
 				Match.end(gameState, { winners: alivePlayer, reason: "DEAD" });
-			}
-
-			// check opponent effect first to prioritize opponent
-			if (opponentTriggerableEffects.length > 0) {
-				
 			}
 
 			break;

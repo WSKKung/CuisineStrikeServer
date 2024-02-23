@@ -143,7 +143,14 @@ export namespace ArrayUtil {
 		}
 		return result;
 	}
-
+	export function group<T, K extends string | number | symbol>(array: Array<T>, groupFunction: (value: T) => K): Record<K, Array<T>> {
+		let result: Record<K , Array<T>> = {} as Record<K , Array<T>>;
+		for (let element of array) {
+			let groupKey = groupFunction(element);
+			result[groupKey] = (result[groupKey] || []).concat(element);
+		}
+		return result;
+	}
 }
 
 export namespace BitField {

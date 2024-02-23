@@ -1,8 +1,8 @@
 import { CardBuff, CardBuffResetCondition } from "../../buff";
 import { Card, CardLocation, CardType } from "../../model/cards";
 import { Match } from "../../match";
-import { CardEffect } from "../../effects/effect";
-import { EventReason } from "../../events";
+import { CardEffect } from "../../model/effect";
+import { EventReason } from "../../model/events";
 
 function recycleFilter(card: Card) {
 	return Card.hasType(card, CardType.DISH)

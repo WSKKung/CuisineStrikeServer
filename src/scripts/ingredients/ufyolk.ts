@@ -1,6 +1,6 @@
 import { CardBuff, CardBuffResetCondition } from "../../buff";
-import { CardEffect } from "../../effects/effect"
-import { EventReason } from "../../events";
+import { CardEffect } from "../../model/effect"
+import { EventReason } from "../../model/events";
 import { Match } from "../../match";
 import { Card, CardClass, CardLocation, CardType } from "../../model/cards";
 

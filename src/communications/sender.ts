@@ -1,7 +1,8 @@
 import { CardProperties, Card, CardID, CardType } from "../model/cards";
-import { GameEvent } from "../events";
+import { GameEvent, GameEventRequestChoice } from "../model/events";
 import { CardLocation } from "../model/cards";
 import { GameState, Match } from "../match"
+import { PlayerRequest } from "../model/player_request";
 import { MatchMessageDispatcher } from "../wrapper"
 import { MatchEventCode } from "./event_codes";
 
@@ -212,8 +213,8 @@ export function broadcastMatchEvent(state: GameState, dispatcher: MatchMessageDi
 			Match.forEachPlayers(state, playerId => {
 				let packet = {
 					attacker_card: localizeSingleCardData(event.attackingCard, state, playerId),
-					target_card: event.directAttack ? undefined : localizeSingleCardData(event.targetCard, state, playerId),
-					is_direct_attack: event.directAttack
+					target_card: event.isDirect ? undefined : localizeSingleCardData(event.targetCard, state, playerId),
+					is_direct_attack: event.isDirect
 				};
 				sendToPlayer(dispatcher, MatchEventCode.ATTACK, packet, playerId);
 			});
@@ -223,58 +224,15 @@ export function broadcastMatchEvent(state: GameState, dispatcher: MatchMessageDi
 			Match.forEachPlayers(state, playerId => {
 				let packet = {
 					card: localizeSingleCardData(event.card, state, playerId, "public"),
-					player: event.player,
+					player: event.sourcePlayer,
 					cancelable: false
 				};
 				sendToPlayer(dispatcher, MatchEventCode.ACTIVATE, packet, playerId);
 			});
 			break;
 
-		case "request_card_choice":
-			Match.forEachPlayers(state, playerId => {
-				let packet = {
-					is_you: playerId === event.player,
-					hint: event.hint,
-					cards: playerId === event.player ? localizeCardData(event.cards, state, playerId, "public") : [],
-					min: event.min,
-					max: event.max
-				};
-				sendToPlayer(dispatcher, MatchEventCode.REQUEST_CARD_CHOICE, packet, playerId);
-			})
-			break;
-		
-		case "request_zone_choice":
-			Match.forEachPlayers(state, playerId => {
-				let packet = {
-					is_you: playerId === event.player,
-					hint: event.hint,
-					zones: playerId === event.player ? event.zones.map(z => ({ location: z.location, owned: event.player === z.owner, column: z.column })) : [],
-					min: event.min,
-					max: event.max
-				};
-				sendToPlayer(dispatcher, MatchEventCode.REQUEST_ZONE_CHOICE, packet, playerId);
-			})
-			break;
-		
-		case "request_yes_no":
-			Match.forEachPlayers(state, playerId => {
-				let packet = {
-					is_you: playerId === event.player,
-					hint: event.hint
-				};
-				sendToPlayer(dispatcher, MatchEventCode.REQUEST_YES_NO_CHOICE, packet, playerId);
-			})
-			break;
-		
-		case "request_option_choice":
-			Match.forEachPlayers(state, playerId => {
-				let packet = {
-					is_you: playerId === event.player,
-					hint: event.hint,
-					options: event.options
-				};
-				sendToPlayer(dispatcher, MatchEventCode.REQUEST_OPTION_CHOICE, packet, playerId);
-			})
+		case "request_choice":
+			sendRequestChoiceAction(state, dispatcher, event.request);
 			break;
 	}
 }
@@ -287,6 +245,57 @@ export function broadcastMatchEnd(state: GameState, dispatcher: MatchMessageDisp
 		}
 		sendToPlayer(dispatcher, MatchEventCode.END_GAME, event, playerId)
 	});
+}
+
+export function sendRequestChoiceAction(state: GameState, dispatcher: MatchMessageDispatcher, request: PlayerRequest) {
+	switch (request.type) {
+		case "cards":
+		Match.forEachPlayers(state, playerId => {
+			let packet = {
+				is_you: playerId === request.playerId,
+				hint: request.hint,
+				cards: playerId === request.playerId ? localizeCardData(request.cards, state, playerId, "public") : [],
+				min: request.min,
+				max: request.max
+			};
+			sendToPlayer(dispatcher, MatchEventCode.REQUEST_CARD_CHOICE, packet, playerId);
+		})
+		break;
+
+		case "zones":
+			Match.forEachPlayers(state, playerId => {
+				let packet = {
+					is_you: playerId === request.playerId,
+					hint: request.hint,
+					zones: playerId === request.playerId ? request.zones.map(z => ({ location: z.location, owned: request.playerId === z.owner, column: z.column })) : [],
+					min: request.min,
+					max: request.max
+				};
+				sendToPlayer(dispatcher, MatchEventCode.REQUEST_ZONE_CHOICE, packet, playerId);
+			})
+			break;
+		
+		case "yes_no":
+			Match.forEachPlayers(state, playerId => {
+				let packet = {
+					is_you: playerId === request.playerId,
+					hint: request.hint
+				};
+				sendToPlayer(dispatcher, MatchEventCode.REQUEST_YES_NO_CHOICE, packet, playerId);
+			})
+			break;
+		
+		case "option":
+			Match.forEachPlayers(state, playerId => {
+				let packet = {
+					is_you: playerId === request.playerId,
+					hint: request.hint,
+					options: request.options
+				};
+				sendToPlayer(dispatcher, MatchEventCode.REQUEST_OPTION_CHOICE, packet, playerId);
+			})
+			break;
+	}
 }
 
 export function broadcastUpdateAvailabeActions(state: GameState, dispatcher: MatchMessageDispatcher) {

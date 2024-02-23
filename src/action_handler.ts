@@ -7,9 +7,9 @@ import zod from "zod";
 import { GameConfiguration } from "./constants";
 import { SetIngredientActionParams, CookSummonActionParams, AttackActionParams, ActionType, actionSchemas, ActivateActionCardParams, ChooseCardsParams, getPlayerActionSchemaByType, PlayerActionParams, PlayerActionParamsActivate, PlayerActionParamsChooseCards, PlayerActionParamsAttack, PlayerActionParamsCookSummon, PlayerActionParamsSetIngredient, PlayerActionParamsToStrikePhase, PlayerActionParamsEndTurn, PlayerActionParamsChooseZones, PlayerActionParamsChooseYesNo, PlayerActionParamsChooseOption } from "./action_schema";
 import { BUFF_ID_OVERGRADED, CardBuff, CardBuffResetCondition } from "./buff";
-import { CardEffectProvider, CardEffectContext, CardActivateEffect } from "./effects/effect";
+import { CardEffectProvider, CardEffectContext, CardActivateEffect } from "./model/effect";
 import { registerCardEffectScripts } from "./scripts";
-import { EventReason } from "./events";
+import { EventReason } from "./model/events";
 
 export type ActionHandlerResult = {
 	success: true
@@ -322,7 +322,7 @@ const chooseCardsHandler: ActionHandleFunction<PlayerActionParamsChooseCards> = 
 	let state = context.gameState;
 	let playerId = context.senderId;
 	let cardRequest = state.currentChoiceRequest;
-	if (!cardRequest || cardRequest.type !== "choose_cards" || cardRequest.playerId !== playerId) {
+	if (!cardRequest || cardRequest.type !== "cards" || cardRequest.playerId !== playerId) {
 		return { success: false, data: { reason: "CHOICE_NOT_REQUESTED" }};
 	}
 	
@@ -346,7 +346,7 @@ const chooseZonesHandler: ActionHandleFunction<PlayerActionParamsChooseZones> = 
 	let state = context.gameState;
 	let playerId = context.senderId;
 	let cardRequest = state.currentChoiceRequest;
-	if (!cardRequest || cardRequest.type !== "choose_zones" || cardRequest.playerId !== playerId) {
+	if (!cardRequest || cardRequest.type !== "zones" || cardRequest.playerId !== playerId) {
 		return { success: false, data: { reason: "CHOICE_NOT_REQUESTED" }};
 	}
 	
@@ -371,7 +371,7 @@ const chooseYesNoHandler: ActionHandleFunction<PlayerActionParamsChooseYesNo> = 
 	let state = context.gameState;
 	let playerId = context.senderId;
 	let cardRequest = state.currentChoiceRequest;
-	if (!cardRequest || cardRequest.type !== "choose_yes_no" || cardRequest.playerId !== playerId) {
+	if (!cardRequest || cardRequest.type !== "yes_no" || cardRequest.playerId !== playerId) {
 		return { success: false, data: { reason: "CHOICE_NOT_REQUESTED" }};
 	}
 	
@@ -384,7 +384,7 @@ const chooseOptionHandler: ActionHandleFunction<PlayerActionParamsChooseOption> 
 	let state = context.gameState;
 	let playerId = context.senderId;
 	let cardRequest = state.currentChoiceRequest;
-	if (!cardRequest || cardRequest.type !== "choose_option" || cardRequest.playerId !== playerId) {
+	if (!cardRequest || cardRequest.type !== "option" || cardRequest.playerId !== playerId) {
 		return { success: false, data: { reason: "CHOICE_NOT_REQUESTED" }};
 	}
 	

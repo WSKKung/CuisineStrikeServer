@@ -1,5 +1,4 @@
-import { CardLocation } from "./model/cards";
-import { CardID } from "./model/cards";
+import { CardLocation, CardID } from "./cards";
 
 export interface CardZone {
 	owner: string,

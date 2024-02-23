@@ -1,7 +1,7 @@
 import { CardBuff, CardBuffResetCondition } from "../../buff";
 import { Card, CardLocation } from "../../model/cards";
 import { Match } from "../../match";
-import { CardEffect } from "../../effects/effect";
+import { CardEffect } from "../../model/effect";
 
 const PEPPER_UP_EFFECT: CardEffect = {
 	type: "activate",

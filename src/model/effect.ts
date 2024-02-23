@@ -1,6 +1,6 @@
-import { Card } from "../model/cards"
+import { Card } from "./cards"
 import { GameState } from "../match"
-import { GameEvent } from "../events"
+import { GameEvent } from "./events"
 import { BitField } from "../utility"
 
 export type CardEffect = CardActivateEffect | CardTriggerEffect
@@ -60,6 +60,10 @@ export namespace CardEffectInstance {
 
 	export function canUse(instance: CardEffectInstance): boolean {
 		return !BitField.any(instance.limits, instance.satisfiedLimits);
+	}	
+	
+	export function isType<T extends CardEffect["type"]>(instance: CardEffectInstance, type: T): boolean {
+		return instance.effect.type === type;
 	}
 
 	export function checkCondition(instance: CardEffectInstance, context: CardEffectContext): boolean {
@@ -76,7 +80,6 @@ export enum CardEffectUseLimit {
 	NONE = 0,
 	ONCE_PER_TURN = 1,
 }
-	
 
 export const CardEffectProvider = {
 

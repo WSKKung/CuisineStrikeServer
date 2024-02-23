@@ -1,4 +1,4 @@
-import { CardEffect } from "../../effects/effect"
+import { CardEffect } from "../../model/effect"
 import BACON_AND_EGG_WARRIOR_EFFECT from "./bacon_and_egg_warrior";
 import BEEF_CANNON_WELLINGTON_EFFECT from "./beef_cannon_wellington";
 import BREAD_EFFECT from "./bread";

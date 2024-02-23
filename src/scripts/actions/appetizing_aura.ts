@@ -1,9 +1,9 @@
 import { CardBuff, CardBuffResetCondition } from "../../buff";
 import { Card, CardLocation } from "../../model/cards";
 import { Match } from "../../match";
-import { CardEffect, CardEffectContext } from "../../effects/effect";
+import { CardEffect, CardEffectContext } from "../../model/effect";
 import { Utility } from "../../utility";
-import { EventReason } from "../../events";
+import { EventReason } from "../../model/events";
 
 const APPETIZING_AURA_EFFECT: CardEffect = {
 	type: "activate",

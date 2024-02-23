@@ -1,4 +1,4 @@
-import { CardEffect } from "../../effects/effect";
+import { CardEffect } from "../../model/effect";
 import PEPPER_UP_EFFECT from "./pepper_up";
 import CHEF_BLESSING_EFFECT from "./chef_blessing";
 import RECIPE_RECALL_EFFECT from "./recipe_recall";
