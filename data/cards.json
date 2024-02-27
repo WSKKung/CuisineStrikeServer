@@ -200,6 +200,21 @@
 				"name": "Dish Cover",
 				"type": 8,
 				"description": "When your opponent's card attacks. Negate the attack."
+			},
+			"26": {
+				"name": "Plate Return",
+				"type": 8,
+				"description": "When your Dishes is destroyed. Recycle 1 of them. Then, you can Set 1 Grade 2 or lower Ingredient with lower Grade than the recycled Dish's Base Grade to your field."
+			},
+			"27": {
+				"name": "Mold Invasion",
+				"type": 8,
+				"description": "When your opponent Sets an Ingredient, discard 1; If it is Grade 1, destroy it, else reduce it's Grade by 1."
+			},
+			"28": {
+				"name": "Rat Attack",
+				"type": 8,
+				"description": "When your opponent Summons a card, discard 1; deals 4 damage to it."
 			}
 		}
 	}
