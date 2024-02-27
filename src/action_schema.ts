@@ -1,7 +1,5 @@
 import zod, { z } from "zod";
 import { GameConfiguration } from "./constants";
-import exp from "constants";
-import { CardZone } from "./field";
 
 export type ActionType = PlayerActionParams["type"]
 

@@ -13,8 +13,9 @@ export type CardActivateEffect = {
 
 export type CardTriggerEffect = {
 	type: "trigger",
-	condition: (context: CardEffectContext) => boolean,
-	activate: (context: CardEffectContext) => Promise<void>
+	resolutionPhase: "before" | "after"
+	condition: (context: TriggerCardEffectContext) => boolean,
+	activate: (context: TriggerCardEffectContext) => Promise<void>
 }
 
 export interface CardEffectContext {
@@ -24,11 +25,13 @@ export interface CardEffectContext {
 	event?: GameEvent
 }
 
+export interface TriggerCardEffectContext extends CardEffectContext {}
+
 export type TriggerEffectContext = CardEffectContext & {
 	event: GameEvent
 }
 
-export type CardEffectInstance = {
+export type CardEffectInstance<EffectType extends CardEffect = CardEffect> = {
 	effect: CardEffect
 	card: Card
 	limits: number

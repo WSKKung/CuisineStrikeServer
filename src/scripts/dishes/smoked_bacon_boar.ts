@@ -15,7 +15,7 @@ const SMOKED_BACON_BOAR_EFFECT: CardEffect = {
 	},
 	async activate(context) {
 		let discardedCard = Match.getTopCards(context.state, 1, CardLocation.MAIN_DECK, context.player)[0];
-		Match.discard(context.state, [discardedCard], context.player, EventReason.EFFECT);
+		await Match.discard(context.state, [discardedCard], context.player, EventReason.EFFECT);
 		if (Card.hasType(discardedCard, CardType.INGREDIENT)) {
 			let powerGained = Card.getGrade(discardedCard) * 2
 			let powerBuff: CardBuff = {

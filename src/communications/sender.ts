@@ -2,7 +2,7 @@ import { CardProperties, Card, CardID, CardType } from "../model/cards";
 import { GameEvent, GameEventRequestChoice } from "../model/events";
 import { CardLocation } from "../model/cards";
 import { GameState, Match } from "../match"
-import { PlayerRequest } from "../model/player_request";
+import { PlayerChoiceRequest, PlayerChoiceResponse } from "../model/player_request";
 import { MatchMessageDispatcher } from "../wrapper"
 import { MatchEventCode } from "./event_codes";
 
@@ -125,13 +125,13 @@ export function sendCurrentMatchState(state: GameState, dispatcher: MatchMessage
 		is_your_turn: Match.isPlayerTurn(state, playerId),
 		cards: localizeCardData(Match.getCards(state, CardLocation.ANYWHERE), state, playerId),
 		you: {
-			hp: Match.getPlayer(state, playerId).hp,
+			hp: Match.getHP(state, playerId),
 			//hand: localizeCardData(Match.getCards(state, CardLocation.HAND, playerId), state, playerId),
 			//main_deck: localizeCardData(Match.getCards(state, CardLocation.MAIN_DECK, playerId), state, playerId),
 			//recipe_deck: localizeCardData(Match.getCards(state, CardLocation.RECIPE_DECK, playerId), state, playerId)
 		},
 		opponent: {
-			hp: Match.getPlayer(state, opponent).hp,
+			hp: Match.getHP(state, opponent),
 			//hand: localizeCardData(Match.getCards(state, CardLocation.HAND, opponent), state, playerId),
 			//main_deck: localizeCardData(Match.getCards(state, CardLocation.MAIN_DECK, opponent), state, playerId),
 			//recipe_deck: localizeCardData(Match.getCards(state, CardLocation.RECIPE_DECK, opponent), state, playerId)
@@ -161,17 +161,29 @@ export function broadcastMatchEvent(state: GameState, dispatcher: MatchMessageDi
 		case "update_hp":
 			Match.forEachPlayers(state, playerId => {
 				let packet = {
-					you: Match.getHP(state, playerId),
-					opponent: Match.getHP(state, Match.getOpponent(state, playerId))
+					is_you: playerId === event.player,
+					amount: event.amount
 				}
 				sendToPlayer(dispatcher, MatchEventCode.UPDATE_PLAYER_HP, packet, playerId);
 			});
 			break;
+		
+			/*
+		case "change_hp":
+			Match.forEachPlayers(state, playerId => {
+				let packet = {
+					is_you: playerId === event.player,
+					amount: event.amount
+				}
+				sendToPlayer(dispatcher, MatchEventCode.UPDATE_PLAYER_HP, packet, playerId);
+			});
+			break;
+			*/
 
 		case "change_phase":
 			Match.forEachPlayers(state, playerId => {
 				let packet = {
-					phase: state.turnPhase
+					phase: event.phase
 				}
 				sendToPlayer(dispatcher, MatchEventCode.CHANGE_PHASE, packet, playerId);
 			});
@@ -224,8 +236,7 @@ export function broadcastMatchEvent(state: GameState, dispatcher: MatchMessageDi
 			Match.forEachPlayers(state, playerId => {
 				let packet = {
 					card: localizeSingleCardData(event.card, state, playerId, "public"),
-					player: event.sourcePlayer,
-					cancelable: false
+					player: event.sourcePlayer
 				};
 				sendToPlayer(dispatcher, MatchEventCode.ACTIVATE, packet, playerId);
 			});
@@ -233,6 +244,47 @@ export function broadcastMatchEvent(state: GameState, dispatcher: MatchMessageDi
 
 		case "request_choice":
 			sendRequestChoiceAction(state, dispatcher, event.request);
+			break;
+
+		case "confirm_choice":
+			sendResponseChoiceAction(state, dispatcher, event.response);
+			break;
+		
+		case "destroy":
+			Match.forEachPlayers(state, playerId => {
+				let packet = {
+					cards: localizeCardData(event.cards, state, playerId)
+				};
+				sendToPlayer(dispatcher, MatchEventCode.DESTROY_CARD, packet, playerId);
+			});
+			break;
+		
+		case "discard":
+			Match.forEachPlayers(state, playerId => {
+				let packet = {
+					cards: localizeCardData(event.cards, state, playerId)
+				};
+				sendToPlayer(dispatcher, MatchEventCode.DISCARD_CARD, packet, playerId);
+			});
+			break;
+		
+		case "damage":
+			Match.forEachPlayers(state, playerId => {
+				let packet = {
+					cards: localizeCardData(event.cards, state, playerId),
+					amount: event.amount
+				};
+				sendToPlayer(dispatcher, MatchEventCode.DAMAGE_CARD, packet, playerId);
+			});
+			break;
+		
+		case "recycle":
+			Match.forEachPlayers(state, playerId => {
+				let packet = {
+					cards: localizeCardData(event.cards, state, playerId)
+				};
+				sendToPlayer(dispatcher, MatchEventCode.RECYCLE_CARD, packet, playerId);
+			});
 			break;
 	}
 }
@@ -247,52 +299,108 @@ export function broadcastMatchEnd(state: GameState, dispatcher: MatchMessageDisp
 	});
 }
 
-export function sendRequestChoiceAction(state: GameState, dispatcher: MatchMessageDispatcher, request: PlayerRequest) {
+export function sendRequestChoiceAction(state: GameState, dispatcher: MatchMessageDispatcher, request: PlayerChoiceRequest) {
 	switch (request.type) {
 		case "cards":
 		Match.forEachPlayers(state, playerId => {
 			let packet = {
+				type: "cards",
 				is_you: playerId === request.playerId,
 				hint: request.hint,
 				cards: playerId === request.playerId ? localizeCardData(request.cards, state, playerId, "public") : [],
 				min: request.min,
 				max: request.max
 			};
-			sendToPlayer(dispatcher, MatchEventCode.REQUEST_CARD_CHOICE, packet, playerId);
+			sendToPlayer(dispatcher, MatchEventCode.REQUEST_CHOICE, packet, playerId);
 		})
 		break;
 
 		case "zones":
 			Match.forEachPlayers(state, playerId => {
 				let packet = {
+					type: "zones",
 					is_you: playerId === request.playerId,
 					hint: request.hint,
 					zones: playerId === request.playerId ? request.zones.map(z => ({ location: z.location, owned: request.playerId === z.owner, column: z.column })) : [],
 					min: request.min,
 					max: request.max
 				};
-				sendToPlayer(dispatcher, MatchEventCode.REQUEST_ZONE_CHOICE, packet, playerId);
+				sendToPlayer(dispatcher, MatchEventCode.REQUEST_CHOICE, packet, playerId);
 			})
 			break;
 		
 		case "yes_no":
 			Match.forEachPlayers(state, playerId => {
 				let packet = {
+					type: "yes_no",
 					is_you: playerId === request.playerId,
 					hint: request.hint
 				};
-				sendToPlayer(dispatcher, MatchEventCode.REQUEST_YES_NO_CHOICE, packet, playerId);
+				sendToPlayer(dispatcher, MatchEventCode.REQUEST_CHOICE, packet, playerId);
 			})
 			break;
 		
 		case "option":
 			Match.forEachPlayers(state, playerId => {
 				let packet = {
+					type: "option",
 					is_you: playerId === request.playerId,
 					hint: request.hint,
 					options: request.options
 				};
-				sendToPlayer(dispatcher, MatchEventCode.REQUEST_OPTION_CHOICE, packet, playerId);
+				sendToPlayer(dispatcher, MatchEventCode.REQUEST_CHOICE, packet, playerId);
+			})
+			break;
+	}
+}
+
+export function sendResponseChoiceAction(state: GameState, dispatcher: MatchMessageDispatcher, response: PlayerChoiceResponse) {
+	switch (response.type) {
+		case "cards":
+		Match.forEachPlayers(state, playerId => {
+			let packet = {
+				type: "cards",
+				is_you: playerId === response.playerId,
+				hint: response.hint,
+				cards: localizeCardData(response.choice, state, playerId, "public"),
+			};
+			sendToPlayer(dispatcher, MatchEventCode.RESPOND_CHOICE, packet, playerId);
+		})
+		break;
+
+		case "zones":
+			Match.forEachPlayers(state, playerId => {
+				let packet = {
+					type: "zones",
+					is_you: playerId === response.playerId,
+					hint: response.hint,
+					zones: response.choice.map(z => ({ location: z.location, owned: response.playerId === z.owner, column: z.column }))
+				};
+				sendToPlayer(dispatcher, MatchEventCode.RESPOND_CHOICE, packet, playerId);
+			})
+			break;
+		
+		case "yes_no":
+			Match.forEachPlayers(state, playerId => {
+				let packet = {
+					type: "yes_no",
+					is_you: playerId === response.playerId,
+					hint: response.hint,
+					yes: response.choice
+				};
+				sendToPlayer(dispatcher, MatchEventCode.RESPOND_CHOICE, packet, playerId);
+			})
+			break;
+		
+		case "option":
+			Match.forEachPlayers(state, playerId => {
+				let packet = {
+					type: "option",
+					is_you: playerId === response.playerId,
+					hint: response.hint,
+					option: response.choice
+				};
+				sendToPlayer(dispatcher, MatchEventCode.RESPOND_CHOICE, packet, playerId);
 			})
 			break;
 	}

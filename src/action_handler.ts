@@ -37,7 +37,7 @@ export type ActionHandleFunction<ParamType = any> = {
 // middleware to validate action available on open state
 function validateOpenState(next: ActionHandleFunction): ActionHandleFunction {
 	return (context, params) => {
-		if (context.gameState.currentChoiceRequest != null) {
+		if (context.gameState.activeRequest != null) {
 			return { success: false, data: { reason: "NOT_AVAILABLE" } };
 		}
 		return next(context, params);
@@ -321,7 +321,7 @@ const activateActionCardHandler: ActionHandleFunction<PlayerActionParamsActivate
 const chooseCardsHandler: ActionHandleFunction<PlayerActionParamsChooseCards> = (context, params) => {
 	let state = context.gameState;
 	let playerId = context.senderId;
-	let cardRequest = state.currentChoiceRequest;
+	let cardRequest = state.activeRequest?.request;
 	if (!cardRequest || cardRequest.type !== "cards" || cardRequest.playerId !== playerId) {
 		return { success: false, data: { reason: "CHOICE_NOT_REQUESTED" }};
 	}
@@ -345,7 +345,7 @@ const chooseCardsHandler: ActionHandleFunction<PlayerActionParamsChooseCards> = 
 const chooseZonesHandler: ActionHandleFunction<PlayerActionParamsChooseZones> = (context, params) => {
 	let state = context.gameState;
 	let playerId = context.senderId;
-	let cardRequest = state.currentChoiceRequest;
+	let cardRequest = state.activeRequest?.request;
 	if (!cardRequest || cardRequest.type !== "zones" || cardRequest.playerId !== playerId) {
 		return { success: false, data: { reason: "CHOICE_NOT_REQUESTED" }};
 	}
@@ -370,7 +370,7 @@ const chooseZonesHandler: ActionHandleFunction<PlayerActionParamsChooseZones> = 
 const chooseYesNoHandler: ActionHandleFunction<PlayerActionParamsChooseYesNo> = (context, params) => {
 	let state = context.gameState;
 	let playerId = context.senderId;
-	let cardRequest = state.currentChoiceRequest;
+	let cardRequest = state.activeRequest?.request;
 	if (!cardRequest || cardRequest.type !== "yes_no" || cardRequest.playerId !== playerId) {
 		return { success: false, data: { reason: "CHOICE_NOT_REQUESTED" }};
 	}
@@ -383,7 +383,7 @@ const chooseYesNoHandler: ActionHandleFunction<PlayerActionParamsChooseYesNo> = 
 const chooseOptionHandler: ActionHandleFunction<PlayerActionParamsChooseOption> = (context, params) => {
 	let state = context.gameState;
 	let playerId = context.senderId;
-	let cardRequest = state.currentChoiceRequest;
+	let cardRequest = state.activeRequest?.request;
 	if (!cardRequest || cardRequest.type !== "option" || cardRequest.playerId !== playerId) {
 		return { success: false, data: { reason: "CHOICE_NOT_REQUESTED" }};
 	}

@@ -1,6 +1,6 @@
 import { CardZone } from "./field";
 import { Card } from "./cards";
-import { PlayerRequest } from "./player_request";
+import { PlayerChoiceRequest, PlayerChoiceResponse } from "./player_request";
 
 export type GameEvent = GameEventActivateCard |
 	GameEventAttack |
@@ -11,7 +11,15 @@ export type GameEvent = GameEventActivateCard |
 	GameEventSetCard |
 	GameEventSummonCard |
 	GameEventUpdateCard |
-	GameEventUpdatePlayerHP
+	GameEventChangePlayerHP |
+	GameEventUpdatePlayerHP |
+	GameEventConfirmChoice |
+	GameEventDamageCard |
+	GameEventDestroyCard |
+	GameEventDiscardCard |
+	GameEventRecycleCard |
+	GameEventDrawCard |
+	GameEventAddCardToHand
 
 export type GameBaseEvent = {
 	id: string
@@ -56,6 +64,7 @@ export type Attack = {
 
 export type GameEventDeclareAttack = GameBaseEvent & {
 	type: "declare_attack"
+	negated: boolean
 } & Attack
 
 export type GameEventAttack = GameBaseEvent & {
@@ -65,7 +74,6 @@ export type GameEventAttack = GameBaseEvent & {
 export type GameEventUpdateCard = GameBaseEvent & {
 	type: "update_card"
 	cards: Array<Card>
-	reason: EventReason
 }
 
 export type GameEventUpdatePlayerHP = GameBaseEvent &
@@ -82,18 +90,50 @@ export type GameEventActivateCard = GameBaseEvent & {
 
 export type GameEventRequestChoice = GameBaseEvent & {
 	type: "request_choice"
-	player: string
-	hint: string
-	request: PlayerRequest
+	request: PlayerChoiceRequest
 }
 
 export type GameEventConfirmChoice = GameBaseEvent & {
 	type: "confirm_choice"
-	player: string
-	hint: string
-	request: PlayerRequest
+	response: PlayerChoiceResponse
 }
 
+export type GameEventChangePlayerHP = GameBaseEvent & {
+	type: "damage_player"
+	player: string
+	amount: number
+}
+
+export type GameEventDestroyCard = GameBaseEvent & {
+	type: "destroy"
+	cards: Array<Card>
+}
+
+export type GameEventDiscardCard = GameBaseEvent & {
+	type: "discard"
+	cards: Array<Card>
+}
+
+export type GameEventDamageCard = GameBaseEvent & {
+	type: "damage"
+	cards: Array<Card>
+	amount: number
+}
+
+export type GameEventDrawCard = GameBaseEvent & {
+	type: "draw"
+	count: number
+}
+
+export type GameEventAddCardToHand = GameBaseEvent & {
+	type: "add_to_hand",
+	cards: Array<Card>
+}
+
+export type GameEventRecycleCard = GameBaseEvent & {
+	type: "recycle"
+	cards: Array<Card>
+}
 
 export type LGameEvent = {
 	id: string

@@ -1,9 +1,12 @@
 import { Card } from "./cards";
 import { CardZone } from "./field";
 
-export type PlayerRequest = PlayerRequestZones | PlayerRequestCards | PlayerRequestYesNo | PlayerRequestOption;
+export type PlayerChoiceType = PlayerChoiceRequest["type"] & PlayerChoiceResponse["type"];
+export type PlayerChoiceResponseValue<Type extends PlayerChoiceType> = (PlayerChoiceResponse & {type: Type})["choice"];
 
-export type PlayerRequestZones = {
+export type PlayerChoiceRequest = PlayerChoiceRequestZones | PlayerChoiceRequestCards | PlayerChoiceRequestYesNo | PlayerChoiceRequestOption;
+
+export type PlayerChoiceRequestZones = {
 	type: "zones";
 	playerId: string;
 	hint: string;
@@ -13,7 +16,7 @@ export type PlayerRequestZones = {
 	callback: (chosenZones: Array<CardZone>) => void;
 };
 
-export type PlayerRequestCards = {
+export type PlayerChoiceRequestCards = {
 	type: "cards";
 	playerId: string;
 	hint: string;
@@ -23,14 +26,14 @@ export type PlayerRequestCards = {
 	callback: (chosenCards: Array<Card>) => void;
 };
 
-export type PlayerRequestYesNo = {
+export type PlayerChoiceRequestYesNo = {
 	type: "yes_no";
 	playerId: string;
 	hint: string;
 	callback: (choice: boolean) => void;
 };
 
-export type PlayerRequestOption = {
+export type PlayerChoiceRequestOption = {
 	type: "option";
 	playerId: string;
 	hint: string;
@@ -38,29 +41,32 @@ export type PlayerRequestOption = {
 	callback: (choice: number) => void;
 };
 
-export type PlayerRequestConfirmation = PlayerRequestConfirmationZones | PlayerRequestConfirmationCards | PlayerRequestConfirmationYesNo | PlayerRequestConfirmationOption;
+export type PlayerChoiceResponse = PlayerChoiceResponseZones | PlayerChoiceResponseCards | PlayerChoiceResponseYesNo | PlayerChoiceResponseOption;
 
-export type PlayerRequestConfirmationZones = {
+export type PlayerChoiceResponseZones = {
 	type: "zones";
 	playerId: string;
-	zones: Array<CardZone>;
+	hint: string;
+	choice: Array<CardZone>;
 }
 
-export type PlayerRequestConfirmationCards = {
+export type PlayerChoiceResponseCards = {
 	type: "cards";
 	playerId: string;
-	cards: Array<Card>;
+	hint: string;
+	choice: Array<Card>;
 }
 
-export type PlayerRequestConfirmationYesNo = {
-	type: "zones";
+export type PlayerChoiceResponseYesNo = {
+	type: "yes_no";
 	playerId: string;
+	hint: string;
 	choice: boolean;
 }
 
-export type PlayerRequestConfirmationOption = {
-	type: "zones";
+export type PlayerChoiceResponseOption = {
+	type: "option";
 	playerId: string;
+	hint: string;
 	choice: number;
-	choiceHint: string;
 }

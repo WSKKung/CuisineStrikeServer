@@ -19,7 +19,7 @@ const CHEF_BLESSING_EFFECT: CardEffect = {
 	async activate(context) {
 		Match.setSelectionHint(context.state, "HINT_SELECT_DISCARD")
 		let discardChoice: Array<Card> = await Match.makePlayerSelectCards(context.state, context.player, Match.findCards(context.state, (card) => costFilter(context, card), CardLocation.HAND, context.player), 1, 1);
-		Match.discard(context.state, discardChoice, context.player, EventReason.EFFECT);
+		await Match.discard(context.state, discardChoice, context.player, EventReason.EFFECT);
 		
 		Match.setSelectionHint(context.state, "HINT_SELECT_GRANT_BUFF")
 		let choice: Array<Card> = await Match.makePlayerSelectCards(context.state, context.player, Match.getCards(context.state, CardLocation.SERVE_ZONE, context.player), 1, 1);

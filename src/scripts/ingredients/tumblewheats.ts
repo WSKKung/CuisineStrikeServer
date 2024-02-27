@@ -18,14 +18,17 @@ const TUMBLEWHEAT_EFFECT: CardEffect = {
 		Match.setSelectionHint(context.state, "HINT_SELECT_DISCARD")
 		let discardOptions = Match.getCards(context.state, CardLocation.HAND, context.player);
 		let discardChoice = await Match.makePlayerSelectCards(context.state, context.player, discardOptions, 1, 1);
-		Match.discard(context.state, discardChoice.concat(context.card), context.player, EventReason.EFFECT | EventReason.COST);
+		await Match.discard(context.state, discardChoice.concat(context.card), context.player, EventReason.EFFECT | EventReason.COST);
 
 		// set
 		Match.setSelectionHint(context.state, "HINT_SELECT_SET")
 		let setOptions = Match.findCards(context.state, c => targetFilter(c, context.card), CardLocation.TRASH, context.player);
 		let setChoice = await Match.makePlayerSelectCards(context.state, context.player, setOptions, 1, 1);
 		let setZoneChoice = await Match.makePlayerSelectFreeZone(context.state, context.player, CardLocation.STANDBY_ZONE, context.player);
-		Match.setToStandby(context.state, setChoice[0], context.player, setZoneChoice.column);
+		if (setZoneChoice) {
+			await Match.setToStandby(context.state, setChoice[0], context.player, setZoneChoice.column);
+		}
+		
 		let gradeBuff: CardBuff = {
 			id: Match.newUUID(context.state),
 			type: "grade",

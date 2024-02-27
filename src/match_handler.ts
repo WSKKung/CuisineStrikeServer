@@ -1,6 +1,6 @@
 import { Card, CardLocation, CardType } from "./model/cards";
 import { receivePlayerMessage } from "./communications/receiver";
-import { broadcastMatchState, broadcastMatchEvent, broadcastMatchEnd, broadcastUpdateAvailabeActions } from "./communications/sender";
+import { broadcastMatchState, broadcastMatchEvent, broadcastMatchEnd, broadcastUpdateAvailabeActions, sendRequestChoiceAction, sendResponseChoiceAction } from "./communications/sender";
 import { GameEventListener, GameEventType, createGameEventListener } from "./event_queue";
 import { EventReason, GameEvent } from "./model/events";
 import { GameState, Match, getPlayerId } from "./match";
@@ -211,6 +211,7 @@ const matchLoop: nkruntime.MatchLoopFunction = function(ctx, logger, nk, dispatc
 				break;
 			}
 
+
 			// read player messages
 			// TODO: Restrict to one command every tick?
 			messages.forEach(msg => {
@@ -220,25 +221,55 @@ const matchLoop: nkruntime.MatchLoopFunction = function(ctx, logger, nk, dispatc
 				receivePlayerMessage(gameState, senderId, opCode, dataStr, matchDispatcher, logger, gameStorageAccess);
 			});
 
-			// copy event queue from game state
-			let currentEventQueue = [ ...gameState.eventQueue ];
-			// clear current event queue for upcoming events
-			gameState.eventQueue.splice(0);
-			//logger.debug("t %d: processing match events checking", tick);
-			if (currentEventQueue.length > 0) {
-				//logger.debug("t %d: processing match events begins", tick);
-				while (currentEventQueue.length > 0) {
-					let event: GameEvent = currentEventQueue.shift()!;
-					//gameState.eventQueue = gameState.eventQueue.filter(eq => eq.id !== event.id);
-					//logger.debug("detected event: %s", JSON.stringify(event));
-					// announce event
-					broadcastMatchEvent(gameState, matchDispatcher, event);
-					// handling current event
-					// new event caused here will be processed in the next tick
+			if (gameState.activeRequest) {
+				if (gameState.activeRequest.response) {
+					logger.debug("send response choice action")
+					sendResponseChoiceAction(gameState, matchDispatcher, gameState.activeRequest.response);
+					gameState.activeRequest = null;
 				}
-				// update available action
-				broadcastUpdateAvailabeActions(gameState, matchDispatcher);
-				//logger.debug("t %d: processing match events ends", tick);
+				else if (!gameState.activeRequest.dispatched) {
+					logger.debug("send request choice action")
+					sendRequestChoiceAction(gameState, matchDispatcher, gameState.activeRequest.request);
+					gameState.activeRequest.dispatched = true;
+				}
+			}
+			
+			if (!gameState.activeRequest) {
+				// copy event queue from game state
+				let currentEventQueue = [ ...gameState.eventQueue ];
+				// clear current event queue for upcoming events
+				gameState.eventQueue.splice(0);
+
+				if (!!gameState.prevEventQueueSizeEmpty || (currentEventQueue.length !== 0)) {
+					logger.debug(currentEventQueue.map<string>(e => e.event.type).reduce((e1, e2) => e1 + " " + e2, ""))
+				}
+				gameState.prevEventQueueSizeEmpty = currentEventQueue.length === 0;
+
+				if (currentEventQueue.length > 0) {
+					// announce event
+					for (let entry of currentEventQueue) {
+						if (entry.event.canceled) {
+							entry.reject();
+						}
+						else {
+							entry.resolve();
+						}
+						gameState.resolvedEventQueue.push(entry);
+					}
+					currentEventQueue = currentEventQueue.filter(e => !e.event.canceled);
+					for (let entry of currentEventQueue) {
+						broadcastMatchEvent(gameState, matchDispatcher, entry.event);
+					}
+					// update available action
+					broadcastUpdateAvailabeActions(gameState, matchDispatcher);
+				}
+				else if (gameState.resolvedEventQueue.length > 0) {
+					
+					// trigger response
+					Match.makePlayersSelectResponseTriggerAbility(gameState, gameState.resolvedEventQueue.map(e => e.event), "after");
+					gameState.resolvedEventQueue.splice(0);
+				}
+				
 			}
 
 			let alivePlayer = players.filter(id => Match.getHP(gameState, id) > 0);

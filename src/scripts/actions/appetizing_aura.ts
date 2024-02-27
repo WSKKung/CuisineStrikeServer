@@ -15,7 +15,7 @@ const APPETIZING_AURA_EFFECT: CardEffect = {
 	async activate(context) {
 		Match.setSelectionHint(context.state, "HINT_SELECT_TARGET_DISH")
 		let choice: Array<Card> = await Match.makePlayerSelectCards(context.state, context.player, Match.getCards(context.state, CardLocation.SERVE_ZONE, context.player), 1, 1);
-		Match.setHP(context.state, context.player, Match.getHP(context.state, context.player) + Card.getPower(choice[0]), EventReason.EFFECT, context.player)
+		await Match.healPlayer(context.state, context.player, Card.getPower(choice[0]), EventReason.EFFECT, context.player)
 	}
 };
 

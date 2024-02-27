@@ -5,6 +5,7 @@ import { Card } from "../../model/cards";
 
 const FORK_TRAP_EFFECT: CardEffect = {
 	type: "trigger",
+	resolutionPhase: "after",
 	condition({ state, player, card, event }) {
 		return !!event && event.type === "declare_attack" && event.attackingCard.owner === Match.getOpponent(state, player);
 	},
