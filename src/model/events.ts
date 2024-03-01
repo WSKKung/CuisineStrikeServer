@@ -244,5 +244,6 @@ export enum EventReason {
 	DRAW = 0x40,
 	SET = 0x80,
 	ACTIVATE = 0x100,
-	DAMAGED = 0x200
+	DAMAGED = 0x200,
+	INIT = 0x400
 }
