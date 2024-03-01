@@ -9,13 +9,20 @@ const RPCSchemas = {
 	})
 }
 
+const SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000000";
+
 export const getCollectionRPC: nkruntime.RpcFunction = function(ctx, logger, nk, payload) {
+	
 	let storage = NakamaAdapter.storageAccess({ nk, logger });
 	let collection = storage.readPlayerCardCollection(ctx.userId);
-	return JSON.stringify(collection);
+	return JSON.stringify({ collection: collection });
 }
 
 export const addToCollectionRPC: nkruntime.RpcFunction = function(ctx, logger, nk, payload) {
+	if (!!ctx.userId && ctx.userId !== SYSTEM_USER_ID) {
+		throw new Error("This RPC is for system only");
+	}
+
 	let payloadParseResult = RPCSchemas.addToCollection.safeParse(JSON.parse(payload));
 	if (!payloadParseResult.success) {
 		throw new Error("Invalid argument");
