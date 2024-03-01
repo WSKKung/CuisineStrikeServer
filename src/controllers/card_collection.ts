@@ -15,7 +15,7 @@ export const getCollectionRPC: nkruntime.RpcFunction = function(ctx, logger, nk,
 	
 	let storage = NakamaAdapter.storageAccess({ nk, logger });
 	let collection = storage.readPlayerCardCollection(ctx.userId);
-	return JSON.stringify({ collection: collection });
+	return JSON.stringify(collection);
 }
 
 export const addToCollectionRPC: nkruntime.RpcFunction = function(ctx, logger, nk, payload) {
