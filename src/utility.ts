@@ -63,6 +63,10 @@ export namespace Utility {
 		Object.keys(object).forEach(key => cloned[key] = object[key]);
 		return cloned;
 	}
+
+	export function randomIntRange(min: number, maxExclusive: number): number {
+		return Math.floor(Math.random() * (maxExclusive - min) + min)
+	}
 }
 
 export namespace ArrayUtil {
