@@ -1,5 +1,5 @@
 import { CardProperties, CardType, CardClass, CardSchemas } from "./model/cards";
-import { Recipe, RecipeSchemas } from "./model/recipes";
+import { EMPTY_RECIPE, Recipe, RecipeSchemas } from "./model/recipes";
 import { Deck, DeckSchemas, Decklist, validateDeck } from "./model/decks";
 import { PlayerPresences } from "./match_handler";
 import zod from "zod";
@@ -30,6 +30,9 @@ export interface GameStorageAccess {
 	updatePlayerCardCollections(playerId: string, collection: CardCollection): void,
 	setPlayerActiveDeck(playerId: string, deckId: string): void,
 	deletePlayerDeck(playerId: string, deckId: string): void
+	readPlayerCoin(playerId: string): number,
+	givePlayerCoin(playerId: string, amount: number): void,
+	takePlayerCoin(playerId: string, amount: number): void,
 }
 
 export function createNakamaMatchDispatcher(nakamaDispatcher: nkruntime.MatchDispatcher, presences: PlayerPresences): MatchMessageDispatcher {
@@ -129,7 +132,7 @@ export namespace NakamaAdapter {
 				let parseResult = RecipeSchemas.RECIPE.safeParse(recipeData);
 				if (!parseResult.success) {
 					options.logger?.error(`Invalid recipe for card id %s: %s`, code, parseResult.error.message);
-					return null;
+					return EMPTY_RECIPE;
 				}
 				let parsed = parseResult.data;
 				let recipe: Recipe = parsed;
@@ -388,7 +391,19 @@ export namespace NakamaAdapter {
 				]);
 
 			},
-	
+			
+			readPlayerCoin(playerId: string): number {
+				let account = options.nk.accountGetId(playerId);
+				return account.wallet["coin"] || 0;
+			},
+
+			givePlayerCoin(playerId: string, amount: number): void {
+				options.nk.walletUpdate(playerId, { coin: amount });
+			},
+
+			takePlayerCoin(playerId: string, amount: number): void {
+				options.nk.walletUpdate(playerId, { coin: -amount });
+			},
 		}
 	}
 }
