@@ -425,7 +425,6 @@ export namespace Match {
 			
 			if (BitField.any(oldLocation, CardLocation.ON_FIELD) && !BitField.any(zone.location, CardLocation.ON_FIELD)) {
 				// left the field
-				state.log?.debug("card left the field: %s", Card.getName(card))
 				removeBuffs(state, [card], buff => BitField.any(buff.resets, CardBuffResetFlag.TARGET_REMOVED));
 				removeBuffs(state, getCards(state, CardLocation.ON_FIELD), buff => buff.sourceCard === card && BitField.any(buff.resets, CardBuffResetFlag.SOURCE_REMOVED));
 				// reset effect limit
@@ -951,11 +950,7 @@ export namespace Match {
 
 	export function removeBuffs(state: GameState, cards: Array<Card>, condition: (buff: CardBuff) => boolean) {
 		for (let card of cards) {
-			let prevLen = state.buffs[card.id].length
 			state.buffs[card.id] = state.buffs[card.id].filter(buff => !condition(buff));
-			let nowLen = state.buffs[card.id].length
-			if (prevLen > nowLen) 
-				state.log?.debug("removeBuffs from %s: from %d to -> %d", Card.getName(card), prevLen, nowLen)
 			reapplyBuffs(state, card);
 		}
 		updateCards(state, cards, EventReason.UNSPECIFIED, "");

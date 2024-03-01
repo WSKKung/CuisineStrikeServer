@@ -39,9 +39,7 @@ export enum CardClass {
 
 export type CardProperties = {
 	code: number,
-	name: string,
 	type: CardType,
-	description: string,
 	classes: CardClass
 	grade: number,
 	power: number,
@@ -100,14 +98,6 @@ export namespace Card {
 
 	export function getType(card: Card): CardType {
 		return card.properties.type;
-	}
-
-	export function getName(card: Card): string {
-		return card.properties.name;
-	}
-
-	export function getDescription(card: Card): string {
-		return card.properties.name;
 	}
 
 	export function getClass(card: Card): CardClass {

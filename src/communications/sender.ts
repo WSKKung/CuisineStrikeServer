@@ -1,4 +1,4 @@
-import { CardProperties, Card, CardID, CardType } from "../model/cards";
+import { CardProperties, Card, CardID, CardType, CardClass } from "../model/cards";
 import { EventReason, GameEvent, GameEventRequestChoice } from "../model/events";
 import { CardLocation } from "../model/cards";
 import { GameState, Match } from "../match"
@@ -6,10 +6,6 @@ import { PlayerChoiceRequest, PlayerChoiceResponse } from "../model/player_reque
 import { MatchMessageDispatcher } from "../wrapper"
 import { MatchEventCode } from "./event_codes";
 import { ArrayUtil } from "../utility";
-
-type OptionalCardProperties = {
-	[property in keyof CardProperties]?: CardProperties[property]
-}
 
 type AvailableTurnActionPacket = {
 	actions: Array<AvailableCardActionPacket>
@@ -38,10 +34,21 @@ type AvailableCardActionPacket = {
 type CardPacket = {
 	id: string,
 	is_owned: boolean,
-	base_properties?: OptionalCardProperties,
-	properties?: OptionalCardProperties,
+	base_properties?: CardPropertiesPacket,
+	properties?: CardPropertiesPacket,
 	location: number,
 	column: number
+}
+
+type CardPropertiesPacket = {
+	code?: number,
+	type?: CardType,
+	classes?: CardClass
+	grade?: number,
+	power?: number,
+	health?: number,
+	bonus_power?: number,
+	bonus_health?: number
 }
 
 interface TurnChangePacket {
@@ -59,6 +66,23 @@ interface DishSummonPacket {
 	card: CardPacket,
 	column: number,
 	materials: Array<CardPacket>
+}
+
+function localizeCardProperties(props: CardProperties, isPrivate: boolean): CardPropertiesPacket {
+		if (isPrivate) {
+			return {}
+		} else {
+			return {
+				code: props.code,
+				type: props.type,
+				classes: props.classes,
+				grade: props.grade,
+				power: props.power,
+				health: props.health,
+				bonus_power: props.bonusPower,
+				bonus_health: props.bonusHealth
+			}
+		}
 }
 
 function localizeSingleCardData(card: Card, state: GameState, playerId: string, forceMode: "public" | "private" | "none" = "none"): CardPacket {
@@ -83,28 +107,16 @@ function localizeSingleCardData(card: Card, state: GameState, playerId: string, 
 			isDataPublicForPlayer = true;
 			break;
 	}
-
 	
-	if (isDataPublicForPlayer) {
+	return {
+		id: card.id,
+		is_owned: isCardOwner,
+		base_properties: localizeCardProperties(card.baseProperties, !isDataPublicForPlayer),
+		properties: localizeCardProperties(card.properties, !isDataPublicForPlayer),
+		location: Card.getLocation(card),
+		column: Card.getColumn(card)
 
-		return {
-			id: card.id,
-			is_owned: isCardOwner,
-			base_properties: card.baseProperties,
-			properties: card.properties,
-			location: Card.getLocation(card),
-			column: Card.getColumn(card)
-
-		};
-	}
-	else {
-		return {
-			id: card.id,
-			is_owned: isCardOwner,
-			location: Card.getLocation(card),
-			column: Card.getColumn(card)
-		};
-	}
+	};
 }
 
 function localizeCardData(cards: Array<Card>, state: GameState, playerId: string, force_mode: "public" | "private" | "none" = "none"): Array<CardPacket> {

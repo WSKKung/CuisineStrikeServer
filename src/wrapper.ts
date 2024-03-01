@@ -104,8 +104,6 @@ export namespace NakamaAdapter {
 				let parsed = parseResult.data;
 				let baseProperties: CardProperties = {
 					code,
-					name: parsed.name || "Unknown",
-					description: parsed.description || "",
 					type: parsed.type || CardType.UNKNOWN,
 					classes: parsed.classes || CardClass.UNKNOWN,
 					grade: parsed.grade || 0,
