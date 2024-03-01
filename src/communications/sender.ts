@@ -1,10 +1,11 @@
 import { CardProperties, Card, CardID, CardType } from "../model/cards";
-import { GameEvent, GameEventRequestChoice } from "../model/events";
+import { EventReason, GameEvent, GameEventRequestChoice } from "../model/events";
 import { CardLocation } from "../model/cards";
 import { GameState, Match } from "../match"
 import { PlayerChoiceRequest, PlayerChoiceResponse } from "../model/player_request";
 import { MatchMessageDispatcher } from "../wrapper"
 import { MatchEventCode } from "./event_codes";
+import { ArrayUtil } from "../utility";
 
 type OptionalCardProperties = {
 	[property in keyof CardProperties]?: CardProperties[property]
@@ -119,22 +120,27 @@ export function deferSendToPlayer(dispatcher: MatchMessageDispatcher, opCode: nu
 }
 
 export function sendCurrentMatchState(state: GameState, dispatcher: MatchMessageDispatcher, playerId: string) {
+	// send card data in batch to prevent overflowing client buffer
 	let opponent = Match.getOpponent(state, playerId);
+	let cards = Match.getCards(state, CardLocation.ANYWHERE);
+	let cardGroupedByOwner = ArrayUtil.group(cards, card => Card.getOwner(card));
+	for (let owner in cardGroupedByOwner) {
+		let cardGroupedByLocation = ArrayUtil.group<Card, string>(cardGroupedByOwner[owner], card => Card.getLocation(card) + "");
+		for (let location in cardGroupedByLocation) {
+			let cardPacket = localizeCardData(cardGroupedByLocation[location], state, playerId);
+			sendToPlayer(dispatcher, MatchEventCode.UPDATE_CARD, { cards: cardPacket, reason: EventReason.INIT }, playerId);
+		}
+	}
+
 	let event = {
 		turn_count: state.turnCount,
 		is_your_turn: Match.isPlayerTurn(state, playerId),
-		cards: localizeCardData(Match.getCards(state, CardLocation.ANYWHERE), state, playerId),
+		cards: [],//localizeCardData(Match.getCards(state, CardLocation.ANYWHERE), state, playerId),
 		you: {
-			hp: Match.getHP(state, playerId),
-			//hand: localizeCardData(Match.getCards(state, CardLocation.HAND, playerId), state, playerId),
-			//main_deck: localizeCardData(Match.getCards(state, CardLocation.MAIN_DECK, playerId), state, playerId),
-			//recipe_deck: localizeCardData(Match.getCards(state, CardLocation.RECIPE_DECK, playerId), state, playerId)
+			hp: Match.getHP(state, playerId)
 		},
 		opponent: {
-			hp: Match.getHP(state, opponent),
-			//hand: localizeCardData(Match.getCards(state, CardLocation.HAND, opponent), state, playerId),
-			//main_deck: localizeCardData(Match.getCards(state, CardLocation.MAIN_DECK, opponent), state, playerId),
-			//recipe_deck: localizeCardData(Match.getCards(state, CardLocation.RECIPE_DECK, opponent), state, playerId)
+			hp: Match.getHP(state, opponent)
 		}
 	};
 	sendToPlayer(dispatcher, MatchEventCode.UPDATE_STATE, event, playerId)
@@ -291,9 +297,11 @@ export function broadcastMatchEvent(state: GameState, dispatcher: MatchMessageDi
 
 export function broadcastMatchEnd(state: GameState, dispatcher: MatchMessageDispatcher) {
 	Match.getActivePlayers(state).forEach(playerId => {
+		let isWinner = Match.isWinner(state, playerId);
+		let reasonString = `${(isWinner ? "win" : "lose")}.${Match.getEndReason(state)}`
 		let event = {
-			is_winner: Match.isWinner(state, playerId),
-			reason: Match.getEndReason(state)
+			is_winner: isWinner,
+			reason: reasonString
 		}
 		sendToPlayer(dispatcher, MatchEventCode.END_GAME, event, playerId)
 	});
@@ -409,60 +417,61 @@ export function sendResponseChoiceAction(state: GameState, dispatcher: MatchMess
 export function broadcastUpdateAvailabeActions(state: GameState, dispatcher: MatchMessageDispatcher) {
 	Match.getActivePlayers(state).forEach(playerId => {
 		let actionMap: { [card: CardID]: AvailableCardActionPacket } = {};
-		// set
-		let potentialSettableCards = Match.findCards(state, (card) =>  Match.isCardCanSetAsIngredient(state, card), CardLocation.HAND, playerId);
-		for (let card of potentialSettableCards) {
-			let requiredCost = Card.getIngredientMinimumMaterialCost(card);
-			if (requiredCost >= 0) {
-				let potentialMaterialCount = Match.countCards(state, CardLocation.STANDBY_ZONE, playerId);
-				if (requiredCost <= potentialMaterialCount) {
-					actionMap[card.id] = actionMap[card.id] || { card: card.id };
-					actionMap[card.id].set = { required_material_count: requiredCost, columns: [0,1,2] }
+		if (Match.isPlayerTurn(state, playerId)) {
+			// set
+			let potentialSettableCards = Match.findCards(state, (card) =>  Match.isCardCanSetAsIngredient(state, card), CardLocation.HAND, playerId);
+			for (let card of potentialSettableCards) {
+				let requiredCost = Card.getIngredientMinimumMaterialCost(card);
+				if (requiredCost >= 0) {
+					let potentialMaterialCount = Match.countCards(state, CardLocation.STANDBY_ZONE, playerId);
+					if (requiredCost <= potentialMaterialCount) {
+						actionMap[card.id] = actionMap[card.id] || { card: card.id };
+						actionMap[card.id].set = { required_material_count: requiredCost, columns: [0,1,2] }
+					}
+				}
+				else {
+					let freeColumns = Match.getFreeColumns(state, playerId, CardLocation.STANDBY_ZONE);
+					if (freeColumns.length > 0) {
+						actionMap[card.id] = actionMap[card.id] || { card: card.id };
+						actionMap[card.id].set = { required_material_count: requiredCost, columns: freeColumns }
+					}
 				}
 			}
-			else {
-				let freeColumns = Match.getFreeColumns(state, playerId, CardLocation.STANDBY_ZONE);
-				if (freeColumns.length > 0) {
-					actionMap[card.id] = actionMap[card.id] || { card: card.id };
-					actionMap[card.id].set = { required_material_count: requiredCost, columns: freeColumns }
+
+			// cook summon
+			let potentialCookableCards = Match.findCards(state, (card) =>  Match.isCardCanCookSummon(state, card), CardLocation.RECIPE_DECK, playerId);
+			for (let card of potentialCookableCards) {
+				actionMap[card.id] = actionMap[card.id] || { card: card.id };
+				actionMap[card.id].cook_summon = {
+					material_combinations: [],
+					columns: [],
+					can_quick_set: Card.hasType(card, CardType.INGREDIENT),
+					quick_set_columns: []
 				}
 			}
-		}
 
-		// cook summon
-		let potentialCookableCards = Match.findCards(state, (card) =>  Match.isCardCanCookSummon(state, card), CardLocation.RECIPE_DECK, playerId);
-		for (let card of potentialCookableCards) {
-			actionMap[card.id] = actionMap[card.id] || { card: card.id };
-			actionMap[card.id].cook_summon = {
-				material_combinations: [],
-				columns: [],
-				can_quick_set: Card.hasType(card, CardType.INGREDIENT),
-				quick_set_columns: []
+			// attack
+			let potentialAttackableCards = Match.findCards(state, (card) =>  Match.isCardCanAttack(state, card), CardLocation.SERVE_ZONE, playerId);
+			let validAttackTargets = Match.getCards(state, CardLocation.SERVE_ZONE, Match.getOpponent(state, playerId));
+			for (let card of potentialAttackableCards) {
+				actionMap[card.id] = actionMap[card.id] || { card: card.id };
+				actionMap[card.id].attack = {
+					can_direct_attack: validAttackTargets.length <= 0,
+					targets: validAttackTargets.map(c => c.id)
+				}
+			}
+
+			// activate
+			let potentialActivateableCards = Match.findCards(state, (card) =>  Match.isCardCanActivateAbility(state, card), CardLocation.HAND | CardLocation.ON_FIELD, playerId);
+			for (let card of potentialActivateableCards) {
+				actionMap[card.id] = actionMap[card.id] || { card: card.id };
+				actionMap[card.id].activate = {}
 			}
 		}
-
-		// attack
-		let potentialAttackableCards = Match.findCards(state, (card) =>  Match.isCardCanAttack(state, card), CardLocation.SERVE_ZONE, playerId);
-		let validAttackTargets = Match.getCards(state, CardLocation.SERVE_ZONE, Match.getOpponent(state, playerId));
-		for (let card of potentialAttackableCards) {
-			actionMap[card.id] = actionMap[card.id] || { card: card.id };
-			actionMap[card.id].attack = {
-				can_direct_attack: validAttackTargets.length <= 0,
-				targets: validAttackTargets.map(c => c.id)
-			}
-		}
-
-		// activate
-		let potentialActivateableCards = Match.findCards(state, (card) =>  Match.isCardCanActivateAbility(state, card), CardLocation.HAND | CardLocation.ON_FIELD, playerId);
-		for (let card of potentialActivateableCards) {
-			actionMap[card.id] = actionMap[card.id] || { card: card.id };
-			actionMap[card.id].activate = {}
-		}
-
+		
 		let packet: AvailableTurnActionPacket = {
 			actions: Object.values(actionMap)
 		};
-
 		//state.log?.debug(JSON.stringify(actionMap));
 		sendToPlayer(dispatcher, MatchEventCode.UPDATE_AVAILABLE_ACTIONS, packet, playerId)
 	});
