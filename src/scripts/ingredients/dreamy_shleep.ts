@@ -15,13 +15,13 @@ const DREAMY_SHLEEP_EFFECT: CardEffect = {
 	},
 	async activate(context) {
 		// cost
-		Match.setSelectionHint(context.state, "HINT_SELECT_DISCARD")
+		Match.setSelectionHint(context.state, "Select a card to discard")
 		let discardOptions = Match.getCards(context.state, CardLocation.HAND, context.player);
 		let discardChoice = await Match.makePlayerSelectCards(context.state, context.player, discardOptions, 1, 1);
 		await Match.discard(context.state, discardChoice.concat(context.card), context.player, EventReason.EFFECT | EventReason.COST);
 
 		// set
-		Match.setSelectionHint(context.state, "HINT_SELECT_SET")
+		Match.setSelectionHint(context.state, "Select a card to Set to the field")
 		let setOptions = Match.findCards(context.state, c => targetFilter(c, context.card), CardLocation.TRASH, context.player);
 		let setChoice = await Match.makePlayerSelectCards(context.state, context.player, setOptions, 1, 1);
 		let setZoneChoice = await Match.makePlayerSelectFreeZone(context.state, context.player, CardLocation.STANDBY_ZONE, context.player);

@@ -15,7 +15,7 @@ const RECIPE_RECALL_EFFECT: CardEffect = {
 	},
 
 	async activate(context) {
-		Match.setSelectionHint(context.state, "HINT_SELECT_RECYCLE")
+		Match.setSelectionHint(context.state, "Select a card to recycle")
 		let cardOptions = Match.findCards(context.state, recycleFilter, CardLocation.TRASH, context.player);
 		let choice: Array<Card> = await Match.makePlayerSelectCards(context.state, context.player, cardOptions, 1, 1);
 		await Match.recycle(context.state, context.player, choice, "shuffle", EventReason.EFFECT);

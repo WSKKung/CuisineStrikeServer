@@ -13,7 +13,7 @@ const OMELETTE_MAIDEN_EFFECT: CardEffect = {
 		return Card.hasLocation(context.card, CardLocation.SERVE_ZONE) && Match.countFilterCards(context.state, recycleFilter, CardLocation.TRASH, context.player) > 0
 	},
 	async activate(context) {
-		Match.setSelectionHint(context.state, "HINT_SELECT_RECYCLE");
+		Match.setSelectionHint(context.state, "Select a card to recycle");
 		let recycleOptions = Match.findCards(context.state, recycleFilter, CardLocation.TRASH, context.player);
 		let recycleChoice = await Match.makePlayerSelectCards(context.state, context.player, recycleOptions, 1, 1);
 		await Match.recycle(context.state, context.player, recycleChoice, "shuffle", EventReason.EFFECT);
