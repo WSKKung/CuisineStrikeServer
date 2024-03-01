@@ -8,6 +8,7 @@ import { BUFF_ID_DAMAGED, CardBuff, CardBuffResetCondition as CardBuffResetFlag 
 import { CardEffect, CardEffectContext, CardEffectInstance, CardEffectUseLimit } from "./model/effect";
 import { PlayerChoiceRequest, PlayerChoiceResponse, PlayerChoiceResponseValue, PlayerChoiceType } from "./model/player_request";
 import { sendRequestChoiceAction } from "./communications/sender";
+import { EndResultStringKeys } from "./communications/string_keys";
 
 export interface GameResult {
 	winners: Array<string>,
@@ -264,7 +265,7 @@ export namespace Match {
 		let event = await pushEvent(state, damageEvent);
 
 		for (let card of event.cards) {
-			if (!Card.hasLocation(card, CardLocation.SERVE_ZONE)) {
+			if (!Card.hasLocation(card, CardLocation.ON_FIELD) || !Card.hasType(card, CardType.DISH)) {
 				continue;
 			}
 			card.damage += event.amount;
@@ -360,7 +361,10 @@ export namespace Match {
 		};
 
 		hurtEvent = await pushEvent(state, hurtEvent);
-		setHP(state, hurtEvent.player, getHP(state, hurtEvent.player) - hurtEvent.amount);
+		setHP(state, hurtEvent.player, getHP(state, hurtEvent.player) + hurtEvent.amount);
+		if (getHP(state, hurtEvent.player) <= 0) {
+			makePlayerLose(state, hurtEvent.player, EndResultStringKeys.HP_REACHES_ZERO);
+		}
 		return hurtEvent.amount;
 	}
 
@@ -664,7 +668,7 @@ export namespace Match {
 		if (drewCount < count) {
 			end(state, {
 				winners: Match.getActivePlayers(state).filter(otherPlayerId => otherPlayerId !== playerId),
-				reason: "DECKED_OUT"
+				reason: EndResultStringKeys.DECKED_OUT
 			});
 			return 0;
 		}
@@ -757,7 +761,7 @@ export namespace Match {
 	}
 
 	export function getEndReason(state: GameState): string {
-		return (state.endResult ? state.endResult.reason : "UNKNOWN");
+		return (state.endResult ? state.endResult.reason : EndResultStringKeys.GENERIC);
 	}
 	
 	export function getFreeZoneCount(state: GameState, playerId: string, location: CardLocation): number {

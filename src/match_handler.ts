@@ -11,6 +11,7 @@ import { GameEventHandler, createEventHandler, setupBaseMechanicsEventHandler } 
 import { registerCardEffectScripts } from "./scripts";
 import { Deck } from "./model/decks";
 import { CardEffect, CardEffectProvider } from "./model/effect";
+import { EndResultStringKeys } from "./communications/string_keys";
 
 export type PlayerPresences = {[playerId: string]: nkruntime.Presence | undefined}
 
@@ -206,7 +207,7 @@ const matchLoop: nkruntime.MatchLoopFunction = function(ctx, logger, nk, dispatc
 				gameState.status = "ended";
 				gameState.endResult = {
 					winners: players,
-					reason: "DISCONNECTED"
+					reason: EndResultStringKeys.DISCONNECTED
 				}
 				break;
 			}
@@ -272,17 +273,21 @@ const matchLoop: nkruntime.MatchLoopFunction = function(ctx, logger, nk, dispatc
 				
 			}
 
-			let alivePlayer = players.filter(id => Match.getHP(gameState, id) > 0);
-			// has at least one player who is dead
-			if (alivePlayer.length < players.length) {
-				Match.end(gameState, { winners: alivePlayer, reason: "DEAD" });
-			}
-
 			break;
 
 		case "ended":
-			logger.debug(JSON.stringify(gameState.endResult))
+			//logger.debug(JSON.stringify(gameState.endResult))
 			broadcastMatchEnd(gameState, matchDispatcher);
+			// grant play rewards
+			for (let playerId of players) {
+				let coinReward: number = 0;
+				if (Match.isWinner(gameState, playerId)) {
+					coinReward = Utility.randomIntRange(120, 181);
+				} else if (Match.getEndReason(gameState) != EndResultStringKeys.DISCONNECTED) {
+					coinReward = Utility.randomIntRange(40, 61);
+				}
+				gameStorageAccess.givePlayerCoin(playerId, coinReward);
+			}
 			//players.forEach(id => sendEventGameEnded(gameState, matchDispatcher, id));
 			return null;
 	}
