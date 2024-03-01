@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+export const EMPTY_RECIPE: Recipe = { slots: [] };
+
 export interface Recipe {
 	slots: RecipeSlot[];
 }

@@ -1,5 +1,5 @@
 import { Card } from "../model/cards"
-import { Recipe, RecipeSlotFilter } from "../model/recipes"
+import { EMPTY_RECIPE, Recipe, RecipeSchemas, RecipeSlotFilter } from "../model/recipes"
 
 export namespace DishSummonProcedure {
 
@@ -15,20 +15,22 @@ export namespace DishSummonProcedure {
 			}
 		]);
 		let recipeListData = (queryResult[0] && queryResult[0].value) || {};
-		let recipeData = recipeListData[code];
-
-		if (!recipeData) {
-			return null;
+		let recipeParseResult = RecipeSchemas.RECIPE.safeParse(recipeListData[code])
+		if (!recipeParseResult.success) {
+			return EMPTY_RECIPE;
 		}
-
+		let recipeData = recipeParseResult.data;
 		recipeCache[code] = recipeData;
 		nk.localcachePut("recipes", recipeCache);
 		return recipeData;
 	}
 
 	export function checkIsRecipeComplete(recipe: Recipe, card: Card, materials: Array<Card>): boolean {
-
 		let slots = recipe.slots;
+		// empty recipe is equivalent to no recipe
+		if (slots.length <= 0) {
+			return false;
+		}
 
 		// thanks to ChatGPT for this algo's idea, without it I would go commit aliven't by now
 		function backtrackCheck(materialIndex: number, usedMaterialPerSlots: Array<Array<Card>>): boolean {
