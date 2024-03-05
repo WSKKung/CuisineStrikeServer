@@ -2,7 +2,7 @@ import { Card, CardLocation, CardType } from "./model/cards";
 import { receivePlayerMessage } from "./communications/receiver";
 import { broadcastMatchState, broadcastMatchEvent, broadcastMatchEnd, broadcastUpdateAvailabeActions, sendRequestChoiceAction, sendResponseChoiceAction } from "./communications/sender";
 import { GameEventListener, GameEventType, createGameEventListener } from "./event_queue";
-import { EventReason, GameEvent } from "./model/events";
+import { EventReason, GameEvent, GameEventContext } from "./model/events";
 import { GameState, Match, getPlayerId } from "./match";
 import { createNakamaIDGenerator, createNakamaMatchDispatcher, NakamaAdapter } from "./wrapper";
 import { GameConfiguration } from "./constants";
@@ -128,74 +128,81 @@ const matchLoop: nkruntime.MatchLoopFunction = function(ctx, logger, nk, dispatc
 		case "init":
 			// wait until all players join the game
 			if (players.length >= 2) {
+					// initialize gamestate
+					gameState.status = "running";
+					gameState.turnPlayer = Match.getRandomPlayer(gameState)
+					gameState.turnCount = 1;
+				
+					// register effect scripts
+					registerCardEffectScripts();
 
-				// initialize deck
-				players.forEach(id => {
-					// main deck
-					// TODO: Use player's selected deck from database instead
-					let deckCards: Array<Card> = [];
-					let handCards: Array<Card> = [];
-					let deck: Deck = gameStorageAccess.readPlayerActiveDeck(id);
-					try {
-						deckCards = deck.main.map(entry => {
-							let cardId = idGen.uuid();
-							let cardProps = gameStorageAccess.readCardProperty(entry.code);
-							return Card.create(cardId, entry.code, id, cardProps)
-						});
+					(async() => {
+						
+						let initContext: GameEventContext = { player: null, reason: EventReason.INIT };
+						// initialize deck
+						for (let id of players) {
+							// main deck
+							// TODO: Use player's selected deck from database instead
+							let deckCards: Array<Card> = [];
+							let handCards: Array<Card> = [];
+							let deck: Deck = gameStorageAccess.readPlayerActiveDeck(id);
+							try {
+								deckCards = deck.main.map(entry => {
+									let cardId = idGen.uuid();
+									let cardProps = gameStorageAccess.readCardProperty(entry.code);
+									return Card.create(cardId, entry.code, id, cardProps)
+								});
 
-						// shuffle
-						Utility.shuffle(deckCards);
+								// shuffle
+								Utility.shuffle(deckCards);
 
-						handCards = deckCards.splice(0, GameConfiguration.initialHandSize);
-					} catch (error: any) {
-						logger.error(`Main deck initialization for player %s failed: %s`, id, error.message);
-					}
+								handCards = deckCards.splice(0, GameConfiguration.initialHandSize);
+							} catch (error: any) {
+								logger.error(`Main deck initialization for player %s failed: %s`, id, error.message);
+							}
 
-					// recipe deck
-					// TODO: Use player's selected deck from database instead
-					let recipeDeckCards: Array<Card> = [];
-					try {
-						recipeDeckCards = deck.recipe.map(entry => {
-							let cardId = idGen.uuid();
-							let cardProps = gameStorageAccess.readCardProperty(entry.code);
-							return Card.create(cardId, entry.code, id, cardProps)
-						});
-						recipeDeckCards.forEach(card => Match.addCard(gameState, card));
-					} catch (error: any) {
-						logger.error(`Recipe deck initialization for player %s failed: %s`, id, error.message);
-					}
+							// recipe deck
+							// TODO: Use player's selected deck from database instead
+							let recipeDeckCards: Array<Card> = [];
+							try {
+								recipeDeckCards = deck.recipe.map(entry => {
+									let cardId = idGen.uuid();
+									let cardProps = gameStorageAccess.readCardProperty(entry.code);
+									return Card.create(cardId, entry.code, id, cardProps)
+								});
+								recipeDeckCards.forEach(card => Match.addCard(gameState, card));
+							} catch (error: any) {
+								logger.error(`Recipe deck initialization for player %s failed: %s`, id, error.message);
+							}
 
-					Match.moveCard(gameState, handCards, CardLocation.HAND, id);
-					Match.moveCard(gameState, deckCards, CardLocation.MAIN_DECK, id);
-					Match.moveCard(gameState, recipeDeckCards, CardLocation.RECIPE_DECK, id);
+							let addedCards = handCards.concat(deckCards).concat(recipeDeckCards);
+							addedCards.forEach(card => Match.addCard(gameState, card));
+							//Match.updateCards(gameState, handCards.concat(deckCards).concat(recipeDeckCards), EventReason.INIT, "");
 
-					let addedCards = handCards.concat(deckCards).concat(recipeDeckCards);
-					addedCards.forEach(card => Match.addCard(gameState, card));
-					Match.updateCards(gameState, handCards.concat(deckCards).concat(recipeDeckCards), EventReason.UNSPECIFIED, "");
-				});
+							Match.moveCardToZone(gameState, initContext, handCards, gameState.players[id]!.hand, "top");
+							Match.moveCardToZone(gameState, initContext, deckCards, gameState.players[id]!.mainDeck, "top");
+							Match.moveCardToZone(gameState, initContext, recipeDeckCards, gameState.players[id]!.recipeDeck, "top");
+							//await Match.moveCard(gameState, id, handCards, CardLocation.HAND, id, 0, "top", EventReason.INIT);
+							//await Match.moveCard(gameState, id, deckCards, CardLocation.MAIN_DECK, id, 0, "top", EventReason.INIT);
+							//await Match.moveCard(gameState, id, recipeDeckCards, CardLocation.RECIPE_DECK, id, 0, "top", EventReason.INIT);
+						}
+						
+						for (let cardId in gameState.cards) {
+							let card: Card = gameState.cards[cardId];
+							let effects = CardEffectProvider.getEffects(Card.getCode(card));
+							for (let effect of effects) {
+								Match.registerEffect(gameState, card, effect);
+							}
+						}
+
+						broadcastMatchState(gameState, matchDispatcher);
+						//broadcastUpdateAvailabeActions(gameState, matchDispatcher);
+
+						await Match.beginTurn(gameState, initContext)
+						
+					})();
 
 			}
-
-			// register effect scripts
-			registerCardEffectScripts();
-			
-			for (let cardId in gameState.cards) {
-				let card: Card = gameState.cards[cardId];
-				let effects = CardEffectProvider.getEffects(Card.getCode(card));
-				for (let effect of effects) {
-					Match.registerEffect(gameState, card, effect);
-				}				
-			}
-
-
-			// initialize gamestate
-			gameState.status = "running";
-			gameState.turnPlayer = Match.getRandomPlayer(gameState)
-			gameState.turnCount = 1
-			broadcastMatchState(gameState, matchDispatcher);
-			//broadcastUpdateAvailabeActions(gameState, matchDispatcher);
-
-			Match.beginTurn(gameState)
 			
 			break;
 
@@ -211,7 +218,6 @@ const matchLoop: nkruntime.MatchLoopFunction = function(ctx, logger, nk, dispatc
 				}
 				break;
 			}
-
 
 			// read player messages
 			// TODO: Restrict to one command every tick?
@@ -241,11 +247,6 @@ const matchLoop: nkruntime.MatchLoopFunction = function(ctx, logger, nk, dispatc
 				// clear current event queue for upcoming events
 				gameState.eventQueue.splice(0);
 
-				if (!!gameState.prevEventQueueSizeEmpty || (currentEventQueue.length !== 0)) {
-					logger.debug(currentEventQueue.map<string>(e => e.event.type).reduce((e1, e2) => e1 + " " + e2, ""))
-				}
-				gameState.prevEventQueueSizeEmpty = currentEventQueue.length === 0;
-
 				if (currentEventQueue.length > 0) {
 					// announce event
 					for (let entry of currentEventQueue) {
@@ -261,11 +262,10 @@ const matchLoop: nkruntime.MatchLoopFunction = function(ctx, logger, nk, dispatc
 					for (let entry of currentEventQueue) {
 						broadcastMatchEvent(gameState, matchDispatcher, entry.event);
 					}
-					// update available action
-					broadcastUpdateAvailabeActions(gameState, matchDispatcher);
 				}
 				else if (gameState.resolvedEventQueue.length > 0) {
-					
+					// update available action
+					broadcastUpdateAvailabeActions(gameState, matchDispatcher);
 					// trigger response
 					Match.makePlayersSelectResponseTriggerAbility(gameState, gameState.resolvedEventQueue.map(e => e.event), "after");
 					gameState.resolvedEventQueue.splice(0);

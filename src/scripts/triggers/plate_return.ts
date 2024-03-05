@@ -24,7 +24,7 @@ const PLATE_RETURN_EFFECT: CardEffect = {
 			Match.setSelectionHint(state, "Select a card to recycle");
 			destroyedCards = await Match.makePlayerSelectCards(state, player, destroyedCards, 1, 1);
 		}
-		await Match.recycle(state, player, destroyedCards, "shuffle", EventReason.EFFECT);
+		await Match.recycle(state, { player: player, reason: EventReason.EFFECT }, destroyedCards, "shuffle");
 		let destroyedCard = destroyedCards[0];
 		if (Match.getFreeZoneCount(state, player, CardLocation.STANDBY_ZONE) > 0) {
 			let canRecycleCards = Match.findCards(state, c => setIngredientFilter(c, destroyedCard), CardLocation.TRASH, player);
@@ -34,7 +34,7 @@ const PLATE_RETURN_EFFECT: CardEffect = {
 					let cardToRecycle = await Match.makePlayerSelectCards(state, player, canRecycleCards, 1, 1);
 					let zoneToPlaceTo = await Match.makePlayerSelectFreeZone(state, player, CardLocation.STANDBY_ZONE, player);
 					if (zoneToPlaceTo) {
-						await Match.setToStandby(state, cardToRecycle[0], player, zoneToPlaceTo.column);
+						await Match.setToStandby(state, { player: player, reason: EventReason.EFFECT }, cardToRecycle[0], player, zoneToPlaceTo.column);
 					}
 				}
 			}

@@ -15,7 +15,7 @@ const SMOKED_BACON_BOAR_EFFECT: CardEffect = {
 	},
 	async activate(context) {
 		let discardedCard = Match.getTopCards(context.state, 1, CardLocation.MAIN_DECK, context.player)[0];
-		await Match.discard(context.state, [discardedCard], context.player, EventReason.EFFECT);
+		await Match.discard(context.state, { player: context.player, reason: EventReason.EFFECT }, [discardedCard]);
 		if (Card.hasType(discardedCard, CardType.INGREDIENT)) {
 			let powerGained = Card.getGrade(discardedCard) * 2
 			let powerBuff: CardBuff = {
@@ -26,7 +26,7 @@ const SMOKED_BACON_BOAR_EFFECT: CardEffect = {
 				sourceCard: context.card,
 				resets: CardBuffResetCondition.TARGET_REMOVED | CardBuffResetCondition.END_TURN
 			};
-			Match.addBuff(context.state, [context.card], powerBuff);
+			Match.addBuff(context.state, { player: context.player, reason: EventReason.EFFECT }, [context.card], powerBuff);
 		}
 	},
 }

@@ -21,7 +21,7 @@ const BACON_AND_EGG_WARRIOR_EFFECT: CardEffect = {
 				sourceCard: context.card,
 				resets: CardBuffResetCondition.TARGET_REMOVED | CardBuffResetCondition.END_TURN
 			};
-			Match.addBuff(context.state, dishCards, powerBuff);
+			Match.addBuff(context.state, { player: context.player, reason: EventReason.EFFECT }, dishCards, powerBuff);
 		}
 	},
 }

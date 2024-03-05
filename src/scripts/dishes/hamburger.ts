@@ -13,7 +13,7 @@ const HAMBURGER_EFFECT: CardEffect = {
 		let damageOption = Match.findCards(context.state, () => true, CardLocation.SERVE_ZONE, Match.getOpponent(context.state, context.player));
 		let damageChoice = await Match.makePlayerSelectCards(context.state, context.player, damageOption, 1, 1);
 		let damageAmount = Math.floor(Card.getPower(context.card) / 2);
-		await Match.damage(context.state, damageChoice, damageAmount, EventReason.EFFECT, context.player);
+		await Match.damage(context.state, { player: context.player, reason: EventReason.EFFECT }, damageChoice, damageAmount);
 		Match.removeCardAttackCount(context.state, context.card);
 	},
 }

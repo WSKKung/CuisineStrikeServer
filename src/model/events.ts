@@ -1,6 +1,11 @@
 import { CardZone } from "./field";
-import { Card } from "./cards";
+import { Card, CardLocation } from "./cards";
 import { PlayerChoiceRequest, PlayerChoiceResponse } from "./player_request";
+
+export type GameEventContext = {
+	player: string | null
+	reason: number
+}
 
 export type GameEvent = GameEventActivateCard |
 	GameEventAttack |
@@ -19,13 +24,16 @@ export type GameEvent = GameEventActivateCard |
 	GameEventDiscardCard |
 	GameEventRecycleCard |
 	GameEventDrawCard |
-	GameEventAddCardToHand
+	GameEventAddCardToHand |
+	GameEventMoveCard |
+	GameEventShuffle |
+	GameEventTurnBegin |
+	GameEventTurnEnd
 
 export type GameBaseEvent = {
 	id: string
 	type: string
-	reason: number
-	sourcePlayer?: string
+	context: GameEventContext
 	canceled?: boolean
 }
 
@@ -42,14 +50,17 @@ export type GameEventChangePhase = GameBaseEvent & {
 
 export type GameEventSetCard = GameBaseEvent & {
 	type: "set"
+	player: string
 	card: Card
 	column: number
 }
 
 export type GameEventSummonCard = GameBaseEvent & {
 	type: "summon"
+	player: string
 	card: Card
 	column: number
+	quickSet: boolean
 }
 
 export type Attack = {
@@ -122,11 +133,12 @@ export type GameEventDamageCard = GameBaseEvent & {
 
 export type GameEventDrawCard = GameBaseEvent & {
 	type: "draw"
+	player: string
 	count: number
 }
 
 export type GameEventAddCardToHand = GameBaseEvent & {
-	type: "add_to_hand",
+	type: "add_to_hand"
 	cards: Array<Card>
 }
 
@@ -135,103 +147,32 @@ export type GameEventRecycleCard = GameBaseEvent & {
 	cards: Array<Card>
 }
 
-export type LGameEvent = {
-	id: string
-	sourcePlayer: string
-	canceled?: boolean
-	reason: number
-} & (
-		{
-			type: "change_turn"
-			turn: number
-			turnPlayer: string
-		} |
-		{
-			type: "change_phase"
-			phase: "setup" | "strike"
-		} |
-		{
-			type: "to_hand"
-			cards: Array<Card>
-		} |
-		{
-			type: "discard"
-			cards: Array<Card>
-		} |
-		{
-			type: "set"
-			card: Card
-			column: number
-		} |
-		{
-			type: "summon"
-			card: Card
-			column: number
-		} |
-		({
-			type: "attack"
-			attackingCard: Card
-			negated: boolean
-		} & (
-				{
-					directAttack: true
-					targetPlayer: string
-				} |
-				{
-					directAttack: false
-					targetCard: Card
-				})) |
-		{
-			type: "destroy"
-			cards: Array<Card>
-		} |
-		{
-			type: "damage"
-			player: string
-			amount: number
-		} |
-		{
-			type: "update_card"
-			cards: Array<Card>
-			reason: EventReason
-		} |
-		{
-			type: "update_hp"
-			player: string
-		} |
-		{
-			type: "activate"
-			player: string
-			card: Card
-		} |
-		{
-			type: "request_card_choice"
-			player: string
-			cards: Array<Card>
-			min: number
-			max: number
-			hint: string
-		} |
-		{
-			type: "request_zone_choice"
-			player: string
-			zones: Array<CardZone>
-			min: number
-			max: number
-			hint: string
-		} |
-		{
-			type: "request_yes_no"
-			player: string
-			hint: string
-		} |
-		{
-			type: "request_option_choice"
-			player: string
-			options: Array<string>
-			hint: string
-		}
-		)
+export type GameEventMoveCard = GameBaseEvent & {
+	type: "move_card"
+	cards: Array<Card>
+	player: string
+	location: CardLocation
+	column: number
+	placement: "top" | "bottom"
+}
+
+export type GameEventShuffle = GameBaseEvent & {
+	type: "shuffle"
+	player: string
+	location: CardLocation
+	column: number
+	sequences: Array<number>
+}
+
+export type GameEventTurnBegin = GameBaseEvent & {
+	type: "begin_turn"
+	turnPlayer: string
+}
+
+export type GameEventTurnEnd = GameBaseEvent & {
+	type: "end_turn"
+	turnPlayer: string
+}
 
 export enum EventReason {
 	UNSPECIFIED = 0,
@@ -245,5 +186,7 @@ export enum EventReason {
 	SET = 0x80,
 	ACTIVATE = 0x100,
 	DAMAGED = 0x200,
-	INIT = 0x400
+	INIT = 0x400,
+	RECYCLED = 0x800,
+	DISCARDED = 0x1000,
 }

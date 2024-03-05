@@ -1,5 +1,5 @@
 import { CardID, Card, CardType  } from "./model/cards";
-import { EventReason, GameEvent } from "./model/events";
+import { EventReason, GameEvent, GameEventContext } from "./model/events";
 import { CardZone, Field } from "./model/field";
 import { CardLocation } from "./model/cards";
 import { GameConfiguration } from "./constants";
@@ -93,7 +93,6 @@ export namespace Match {
 
 	export function createState(): GameState {
 		return {
-			playerData: {},
 			players: {},
 			cards: {},
 			buffs: {},
@@ -202,67 +201,68 @@ export namespace Match {
 		return promise;
 	}
 
-	export function updateCards(state: GameState, cards: Array<Card>, reason: number, reasonPlayer: string) {
-		pushEvent(state, { id: newUUID(state), type: "update_card", cards: cards, reason: reason, sourcePlayer: reasonPlayer })
+	export function updateCards(state: GameState, context: GameEventContext, cards: Array<Card>) {
+		for (let card of cards) {
+			state.cards[card.id] = card;
+		}
+		pushEvent(state, { id: newUUID(state), type: "update_card", cards: cards, context: context })
 	}
 
 
-	export function isAbilityUseable(state: GameState, playerId: string, effect: CardEffectInstance): boolean {
-		let activateCtx: CardEffectContext = { state: state, player: playerId, card: effect.card };
+	export function isAbilityUseable(state: GameState, player: string, effect: CardEffectInstance): boolean {
+		let activateCtx: CardEffectContext = { state: state, player: player, card: effect.card };
 		return CardEffectInstance.canUse(effect) && Card.canPosibblyActivateEffect(effect.card) && effect.effect.type === "activate" && CardEffectInstance.checkCondition(effect, activateCtx);
 	}
 
-	export function hasUseableActivateAbility(state: GameState, playerId: string, card: Card): boolean {
-		return state.effects[card.id].some(e => isAbilityUseable(state, playerId, e));
+	export function hasUseableActivateAbility(state: GameState, card: Card): boolean {
+		return state.effects[card.id].some(e => isAbilityUseable(state, Card.getOwner(card), e));
 	}
 	
-	export async function activateAbility(state: GameState, playerId: string, card: Card): Promise<void> {
-		let activateCtx: CardEffectContext = { state: state, player: playerId, card: card };
-		let firstUseableEffect = state.effects[card.id].find(e => isAbilityUseable(state, playerId, e));
+	export async function activateAbility(state: GameState, context: GameEventContext, card: Card): Promise<void> {
+		let firstUseableEffect = state.effects[card.id].find(e => isAbilityUseable(state, context.player || "", e));
 		if (!firstUseableEffect) {
 			return;
 		}
 
-		await resolveAbility(state, firstUseableEffect!);
+		await resolveAbility(state, context, firstUseableEffect!);
 	}
 
 
-	export async function resolveAbility(state: GameState, effect: CardEffectInstance, event?: GameEvent): Promise<void> {
+	export async function resolveAbility(state: GameState, context: GameEventContext, effect: CardEffectInstance, event?: GameEvent): Promise<void> {
 		let card = effect.card;
 		let playerId = card.owner;
 		let ctx: CardEffectContext = {
 			state: state, card: card, player: playerId, event: event
 		};
-
-		let activateEvent: GameEvent = { 
+		
+		let activateEvent = await pushEvent(state, { 
 			id: Match.newUUID(state), 
 			type: "activate", 
 			card: card, 
-			reason: EventReason.ACTIVATE, 
-			sourcePlayer: playerId 
-		}
-		
-		await pushEvent(state, activateEvent);
+			context: context
+		});
+		activateEvent.context.reason |= EventReason.ACTIVATE
+
 		await effect.effect.activate(ctx);
 
 		// discard if is action or trigger activated from hand
 		if (Card.hasType(card, CardType.ACTION | CardType.TRIGGER) && Card.hasLocation(card, CardLocation.HAND)) {
-			Match.discard(state, [card], playerId, EventReason.GAMERULE);
+			Match.discard(state, context, [card]);
 		}
 
 		CardEffectInstance.setLimitReached(effect, CardEffectUseLimit.ONCE_PER_TURN);
 	}
-	export async function damage(state: GameState, cards: Array<Card>, amount: number, reason: EventReason, reasonPlayer: string): Promise<number> {
+	export async function damage(state: GameState, context: GameEventContext, cards: Array<Card>, amount: number): Promise<number> {
 		if (amount <= 0) return 0;
 		let damageEvent: GameEvent = {
 			id: newUUID(state),
 			type: "damage",
-			reason: reason,
-			sourcePlayer: reasonPlayer,
+			context: context,
 			cards: cards,
 			amount: amount
 		}
 		let event = await pushEvent(state, damageEvent);
+		event.context.reason |= EventReason.DAMAGED
 
 		for (let card of event.cards) {
 			if (!Card.hasLocation(card, CardLocation.ON_FIELD) || !Card.hasType(card, CardType.DISH)) {
@@ -277,12 +277,12 @@ export namespace Match {
 				amount: -event.amount,
 				resets: CardBuffResetFlag.TARGET_REMOVED
 			};
-			addBuff(state, [card], damagedBuff);
+			addBuff(state, event.context, [card], damagedBuff);
 		}
 
-		destroy(state, cards.filter(c => Card.getHealth(c) <= 0), reasonPlayer, reason);
+		destroy(state, context, cards.filter(c => Card.getHealth(c) <= 0));
 
-		updateCards(state, event.cards, reason, reasonPlayer);
+		updateCards(state, context, event.cards);
 		return event.amount;
 
 	}
@@ -334,13 +334,12 @@ export namespace Match {
 		//pushEvent(state, { id: newUUID(state), type: "update_hp", sourcePlayer: reasonPlayer, player: playerId, reason: reason, amount: hp })
 	}
 
-	export async function healPlayer(state: GameState, playerId: string, amount: number, reason: EventReason, reasonPlayer: string): Promise<number> {
+	export async function healPlayer(state: GameState, context: GameEventContext, playerId: string, amount: number): Promise<number> {
 		let healEvent: GameEvent = {
 			id: newUUID(state), 
 			type: "update_hp", 
-			sourcePlayer: reasonPlayer, 
+			context: context,
 			player: playerId, 
-			reason: reason, 
 			amount: amount
 		};
 
@@ -350,13 +349,12 @@ export namespace Match {
 
 	}
 	
-	export async function damagePlayer(state: GameState, playerId: string, amount: number, reason: EventReason, reasonPlayer: string): Promise<number> {
+	export async function damagePlayer(state: GameState, context: GameEventContext, playerId: string, amount: number): Promise<number> {
 		let hurtEvent: GameEvent = {
 			id: newUUID(state), 
 			type: "update_hp", 
-			sourcePlayer: reasonPlayer, 
+			context: context,
 			player: playerId, 
-			reason: reason, 
 			amount: -amount
 		};
 
@@ -413,7 +411,8 @@ export namespace Match {
 		return foundZones;
 	}
 
-	function moveCardToZone(state: GameState, cards: Array<Card>, zone: CardZone, insertLocation?: "top" | "bottom" | "shuffle") {
+	export function moveCardToZone(state: GameState, context: GameEventContext, cards: Array<Card>, zone: CardZone, insertLocation: "top" | "bottom") {
+		let movedCard: Array<Card> = [];
 		insertLocation = insertLocation || "top";
 		// remove each card from their previous zone
 		cards.forEach(card => {
@@ -423,10 +422,13 @@ export namespace Match {
 				oldZone[0].cards = oldZone[0].cards.filter(cardInZone => cardInZone !== card.id);
 			}
 			
+			// card left the field
 			if (BitField.any(oldLocation, CardLocation.ON_FIELD) && !BitField.any(zone.location, CardLocation.ON_FIELD)) {
-				// left the field
-				removeBuffs(state, [card], buff => BitField.any(buff.resets, CardBuffResetFlag.TARGET_REMOVED));
-				removeBuffs(state, getCards(state, CardLocation.ON_FIELD), buff => buff.sourceCard === card && BitField.any(buff.resets, CardBuffResetFlag.SOURCE_REMOVED));
+				Card.resetProperties(card);
+				// remove its buff
+				removeBuffs(state, context, [card], buff => BitField.any(buff.resets, CardBuffResetFlag.TARGET_REMOVED));
+				// remove buffs that depends on this card being on the field
+				removeBuffs(state, context, getCards(state, CardLocation.ON_FIELD), buff => buff.sourceCard === card && BitField.any(buff.resets, CardBuffResetFlag.SOURCE_REMOVED));
 				// reset effect limit
 				for (let effect of state.effects[card.id]) {
 					CardEffectInstance.restoreAllLimits(effect);
@@ -436,32 +438,87 @@ export namespace Match {
 		
 		});
 
-		cards.forEach(card => {
-			card.location = zone.location;
-			card.column = zone.column;
-			//Match.updateCard(state, card)
+		cards.forEach((card) => {
+			card.location = zone.location
+			card.column = zone.column
 		});
 
+		let insertStartIndex: number = 0;
 		// place a card in the new zone
 		switch (insertLocation) {
 			case "top":
+				insertStartIndex = zone.cards.length
 				zone.cards = zone.cards.concat(cards.map(c => c.id));
+				movedCard = movedCard.concat(cards);
 				break;
 			case "bottom":
+				insertStartIndex = 0
 				zone.cards = cards.map(c => c.id).concat(zone.cards);
+				movedCard = movedCard.concat(findCardsById(state, zone.cards));
 				break;
-			case "shuffle":
-				zone.cards = zone.cards.concat(cards.map(c => c.id));
-				zone.cards = Utility.shuffle(zone.cards)
-				break;
+		}
+
+		movedCard.forEach((card, index) => {
+			card.sequence = index + insertStartIndex;
+		});
+
+		updateCards(state, context, movedCard)
+
+		//const getLocations = (_cards: Array<Card>) => _cards.map(c => c.location + "").reduce((a,b) => a + " " + b, "")
+		// print card location list acquired from parameters: location updated correctly 
+		//state.log?.debug("card locations from parameters: " + getLocations(cards))
+		// print card location list from card data from game state registry: location somehow did not get updated >:/
+		//state.log?.debug("card locations from game states: " + getLocations(findCardsById(state, cards.map(c => c.id))))
+	}
+
+	export async function shuffle(state: GameState, context: GameEventContext, owner: string, location: CardLocation, column: number): Promise<void> {
+		let zones = findZones(state, location, owner, column);
+		if (zones.length > 0) {
+			let zone = zones[0];
+			let event = await pushEvent(state, {
+				id: newUUID(state),
+				type: "shuffle",
+				context: context,
+				player: owner,
+				location: location,
+				column: column,
+				sequences: ArrayUtil.shuffle(ArrayUtil.range(0, zone.cards.length))
+			});
+			zone.cards = event.sequences.map(idx => zone.cards[idx]);
+			let shuffledCards = findCardsById(state, zone.cards);
+			shuffledCards.forEach((card, index) => {
+				card.sequence = index;
+			})
+			updateCards(state, context, shuffledCards);
 		}
 	}
 
-	export function moveCard(state: GameState, cards: Array<Card>, targetLocation: CardLocation, targetPlayerId: string, column?: number | null, insertLocation?: "top" | "bottom" | "shuffle") {
-		let targetZones = findZones(state, targetLocation, targetPlayerId, column);
-		let targetZone: CardZone | undefined = targetZones.length === 0 ? undefined : targetZones[0];
-		if (targetZone) {
-			moveCardToZone(state, cards, targetZone, insertLocation);
+	export async function moveCard(state: GameState, context: GameEventContext, cards: Array<Card>, targetLocation: CardLocation, targetPlayerId: string, column: number | null, placement: "top" | "bottom" | "shuffle"): Promise<void> {
+		let shuffleCards: boolean = false
+		if (placement === "shuffle") {
+			placement = "top";
+			shuffleCards = true;
+		}
+
+		let event = await pushEvent(state, {
+			id: newUUID(state),
+			type: "move_card",
+			context: context,
+			cards: cards,
+			location: targetLocation,
+			column: column || 0,
+			player: targetPlayerId,
+			placement: placement
+		});
+
+		let targetZones = findZones(state, event.location, event.player, event.column);
+		if (targetZones.length > 0) {
+			let targetZone = targetZones[0];
+			moveCardToZone(state, context, event.cards, targetZone, event.placement);
+			if (shuffleCards) {
+				await shuffle(state, context, event.player, event.location, event.column);
+			}
+			//updateCards(state, event.cards, reason, player);
 		}
 	}
 
@@ -477,109 +534,95 @@ export namespace Match {
 		}
 	}
 	
-	export async function recycle(state: GameState, playerId: string, cards: Array<Card>, insertLocation: "top" | "bottom" | "shuffle", reason: number): Promise<void> {
-		let recycleEvent: GameEvent = {
+	export async function recycle(state: GameState, context: GameEventContext, cards: Array<Card>, placement: "top" | "bottom" | "shuffle"): Promise<void> {
+		if (cards.length === 0) return;
+		let event = await pushEvent(state, {
 			id: newUUID(state),
 			type: "recycle",
-			sourcePlayer: playerId,
-			reason: reason,
+			context: context,
 			cards: cards
-		};
-		let event = await pushEvent(state, recycleEvent);
-		for (let card of event.cards) {
-			let targetPlayer = getPlayer(state, card.owner);
-			let targetZone = Card.hasType(card, CardType.DISH) ? targetPlayer.recipeDeck : targetPlayer.mainDeck;
-			moveCardToZone(state, [card], targetZone, insertLocation);
+		});
+		event.context.reason |= EventReason.RECYCLED
+		let locationGroup = ArrayUtil.group(event.cards, card => Card.hasType(card, CardType.DISH) ? CardLocation.RECIPE_DECK : CardLocation.MAIN_DECK);
+		for (let { key, items } of locationGroup) {
+			let location = key
+			let ownerGroup = ArrayUtil.group(items, Card.getOwner)
+			for (let { key, items } of ownerGroup) {
+				let owner = key
+				await moveCard(state, context, items, location, owner, 0, placement);
+			}
 		}
-		updateCards(state, cards, reason, playerId);
 	}
 
-	export async function discard(state: GameState, cards: Array<Card>, playerId: string, reason: number): Promise<void> {
+	export async function discard(state: GameState, context: GameEventContext, cards: Array<Card>): Promise<void> {
 		if (cards.length === 0) return;
-		let discardEvent: GameEvent = {
+		let event = await pushEvent(state, {
 			id: newUUID(state),
 			type: "discard",
-			sourcePlayer: playerId,
-			reason: reason,
+			context: context,
 			cards: cards
-		};
-
-		let event = await pushEvent(state, discardEvent);
-		for (let card of event.cards) {
-			moveCardToZone(state, [card], getPlayer(state, Card.getOwner(card)).trash);
-			// reset
-			Card.resetProperties(card);
+		});
+		event.context.reason |= EventReason.DISCARDED
+		let ownerGroup = ArrayUtil.group(event.cards, Card.getOwner)
+		for (let { key, items } of ownerGroup) {
+			let owner = key
+			await moveCard(state, event.context, items, CardLocation.TRASH, owner, 0, "top");
 		}
-		updateCards(state, event.cards, event.reason, playerId);
-		
 	}	
 	
-	export async function destroy(state: GameState, cards: Array<Card>, playerId: string, reason: number): Promise<void> {
+	export async function destroy(state: GameState, context: GameEventContext, cards: Array<Card>): Promise<void> {
 		if (cards.length === 0) return;
-
-		let destroyEvent: GameEvent = {
+		let event = await pushEvent(state, {
 			id: newUUID(state),
 			type: "destroy",
-			sourcePlayer: playerId,
-			reason: reason,
+			context: context,
 			cards: cards
-		};
-
-		let event = await pushEvent(state, destroyEvent);
-
-		for (let card of event.cards) {
-			moveCardToZone(state, [card], getPlayer(state, Card.getOwner(card)).trash);
-			// reset
-			Card.resetProperties(card);
+		});
+		event.context.reason |= EventReason.DESTROYED
+		let cardGroup = ArrayUtil.group(event.cards, Card.getOwner);
+		for (let { key, items} of cardGroup) {
+			await moveCard(state, event.context, items, CardLocation.TRASH, key, 0, "top");
 		}
-		updateCards(state, event.cards, event.reason, playerId);
-		
 	}
 
-	export async function setToStandby(state: GameState, card: Card, playerId: string, column: number): Promise<void> {
-		// TODO: Queue set event
-		let setEvent: GameEvent = { 
+	export async function setToStandby(state: GameState, context: GameEventContext, card: Card, playerId: string, column: number): Promise<void> {
+		let event = await pushEvent(state, { 
 			id: newUUID(state), 
-			sourcePlayer: playerId, 
 			type: "set", 
-			reason: EventReason.SET, 
+			context: context,
 			card: card, 
+			player: playerId,
 			column: column 
-		};
-		
-		let event = await pushEvent(state, setEvent);
+		});
+		event.context.reason |= EventReason.SET
 		let zone = getPlayer(state, playerId).standbyZone[event.column];
 		if (!zone) {
 			return;
 		}
-		moveCardToZone(state, [event.card], zone);
-		updateCards(state, [event.card], EventReason.SET, playerId);
+		await moveCard(state, event.context, [event.card], CardLocation.STANDBY_ZONE, event.player, event.column, "top");
+		updateCards(state, event.context, [event.card]);
 	}
 
-	export async function summon(state: GameState, card: Card, playerId: string, column: number, reason: EventReason, isQuickSet: boolean = false): Promise<void> {
-		let zone = isQuickSet ? getPlayer(state, playerId).standbyZone[column] : getPlayer(state, playerId).serveZones[column];
-		if (!zone) {
-			return;
-		}
-
-		let summonEvent: GameEvent = { 
+	export async function summon(state: GameState, context: GameEventContext, card: Card, playerId: string, column: number, isQuickSet: boolean = false): Promise<void> {
+		let location = isQuickSet ? CardLocation.STANDBY_ZONE : CardLocation.SERVE_ZONE;
+		let event = await pushEvent(state, { 
 			id: newUUID(state), 
-			sourcePlayer: playerId, 
+			context: context,
 			type: "summon", 
-			reason: reason | EventReason.SUMMON, 
 			card: card, 
-			column: column 
-		};
-
-		let event = await pushEvent(state, summonEvent);
-		moveCardToZone(state, [event.card], zone);
+			player: playerId,
+			column: column,
+			quickSet: isQuickSet
+		});
+		event.context.reason |= EventReason.SUMMON
+		await moveCard(state, event.context, [event.card], location, event.player, event.column, "top");
 
 		// allow attack on owner turn and turn 2 or onward only
 		if (Match.isPlayerTurn(state, Card.getOwner(event.card)) && state.turnCount > 1) {
 			resetCardAttackCount(state, event.card);
 		}
 
-		updateCards(state, [event.card], reason, playerId);
+		updateCards(state, event.context, [event.card]);
 
 	}
 
@@ -616,16 +659,6 @@ export namespace Match {
 	export function findCardByID(state: GameState, id: CardID): Card | null {
 		let foundCard = state.cards[id];
 		return (foundCard ? foundCard : null);
-		/** 
-		let targetZones = findZones(state, location, ownerId, column);
-		for (let zone of targetZones) {
-			let cards = zone.cards;
-			let foundCards = cards.filter(card => card.id === id);
-			if (foundCards.length > 0) {
-				return foundCards[0];
-			}
-		}
-		return null;*/
 	}
 
 	export function findCardsById(state: GameState, ids: Array<CardID>): Array<Card> {
@@ -638,29 +671,33 @@ export namespace Match {
 		return cards.slice(-count);
 	}
 
-	export async function addToHand(state: GameState, playerId: string, cards: Array<Card>, reason: number): Promise<number> {
+	export async function addToHand(state: GameState, context: GameEventContext, cards: Array<Card>): Promise<number> {
 		let event = await pushEvent(state, {
 			id: newUUID(state),
 			type: "add_to_hand",
-			sourcePlayer: playerId,
-			reason: reason,
+			context: context,
 			cards: cards
 		})
-		moveCard(state, event.cards, CardLocation.HAND, playerId);
-		updateCards(state, event.cards, reason, playerId);
+		let ownerGroup = ArrayUtil.group(event.cards, Card.getOwner)
+		await Promise.all(ownerGroup.map(({ key, items }) => {
+			return moveCard(state, event.context, items, CardLocation.HAND, key, 0, "top");
+		}));
+
+		//updateCards(state, event.cards, reason, playerId);
 		return cards.length;
 	}
 
-	export async function drawCard(state: GameState, playerId: string, count: number, reason: number): Promise<number> {
+	export async function drawCard(state: GameState, context: GameEventContext, playerId: string, count: number): Promise<number> {
 		let event = await pushEvent(state, {
 			id: newUUID(state),
 			type: "draw",
-			sourcePlayer: playerId,
-			reason: EventReason.DRAW,
+			context: context,
+			player: playerId,
 			count: count
 		})
+		event.context.reason |= EventReason.DRAW
 
-		let drewCards = getTopCards(state, count, CardLocation.MAIN_DECK, playerId);
+		let drewCards = getTopCards(state, event.count, CardLocation.MAIN_DECK, event.player);
 		let drewCount = drewCards.length;
 
 		// Decked out if requested top card has less card than the required count
@@ -672,21 +709,20 @@ export namespace Match {
 			return 0;
 		}
 
-		return await addToHand(state, playerId, drewCards, reason);
+		return await addToHand(state, event.context, drewCards);
 	}
 
-	export async function fillHand(state: GameState, playerId: string, size: number, min: number, reason: number): Promise<number> {
+	export async function fillHand(state: GameState, context: GameEventContext, playerId: string, size: number, min: number): Promise<number> {
 		// Draw until player has a fixed number of cards in their hand, capped at minimum by min.
 		let handSize = getPlayer(state, playerId).hand.cards.length;
 		let drawSize = Math.max(size - handSize, min);
-		return await drawCard(state, playerId, drawSize, reason);
+		return await drawCard(state, context, playerId, drawSize);
 	}
 
-	export async function goToSetupPhase(state: GameState, playerId: string): Promise<void> {
+	export async function goToSetupPhase(state: GameState, context: GameEventContext): Promise<void> {
 		let changePhaseEvent: GameEvent = { 
 			id: newUUID(state), 
-			sourcePlayer: playerId, 
-			reason: EventReason.GAMERULE,
+			context: context,
 			type: "change_phase", 
 			phase: "setup"
 		};
@@ -694,11 +730,10 @@ export namespace Match {
 		state.turnPhase = changePhaseEvent.phase;
 	}
 
-	export async function goToStrikePhase(state: GameState, playerId: string): Promise<void> {
+	export async function goToStrikePhase(state: GameState, context: GameEventContext): Promise<void> {
 		let changePhaseEvent: GameEvent = { 
 			id: newUUID(state), 
-			sourcePlayer: playerId, 
-			reason: EventReason.GAMERULE,
+			context: context,
 			type: "change_phase", 
 			phase: "strike"
 		};
@@ -706,27 +741,31 @@ export namespace Match {
 		state.turnPhase = changePhaseEvent.phase;
 	}
 
-	export async function gotoNextTurn(state: GameState, playerId: string): Promise<void> {
-
-		let changeTurnEvent: GameEvent = { 
+	export async function gotoNextTurn(state: GameState, context: GameEventContext): Promise<void> {
+		let event = await pushEvent(state, { 
 			id: newUUID(state), 
-			sourcePlayer: playerId, 
-			reason: EventReason.GAMERULE, 
+			context: context,
 			type: "change_turn", 
 			turn: state.turnCount + 1, 
 			turnPlayer: getOpponent(state, getTurnPlayer(state))
-		};
-		let event = await pushEvent(state, changeTurnEvent);
+		});
 
-		endTurn(state);
-		state.turnCount += event.turn;
+		await endTurn(state, event.context);
+		state.turnCount = event.turn;
 		state.turnPlayer = event.turnPlayer;
-		beginTurn(state);
+		await beginTurn(state, event.context);
 		
 	}
 
-	export function endTurn(state: GameState): void {
-		removeBuffs(state, getCards(state, CardLocation.ON_FIELD), (buff) => BitField.any(buff.resets, CardBuffResetFlag.END_TURN));
+	export async function endTurn(state: GameState, context: GameEventContext): Promise<void> {
+		let event = await pushEvent(state, {
+			id: newUUID(state),
+			type: "end_turn",
+			context: context,
+			turnPlayer: getTurnPlayer(state)
+		});
+
+		removeBuffs(state, event.context, getCards(state, CardLocation.ON_FIELD), (buff) => BitField.any(buff.resets, CardBuffResetFlag.END_TURN));
 		for (let cardId in state.effects) {
 			for (let effect of state.effects[cardId]) {
 				CardEffectInstance.restoreLimit(effect, CardEffectUseLimit.ONCE_PER_TURN);
@@ -734,15 +773,23 @@ export namespace Match {
 		}
 	}
 
-	export function beginTurn(state: GameState): void {
-		let turnPlayer = getTurnPlayer(state);
+	export async function beginTurn(state: GameState, context: GameEventContext): Promise<void> {
+		let event = await pushEvent(state, {
+			id: newUUID(state),
+			type: "begin_turn",
+			context: context,
+			turnPlayer: getTurnPlayer(state)
+		});
+
+		let turnPlayer = event.turnPlayer;
+
 		// reset timer
 		let maxTimeout = GameConfiguration.timeout.fixed + GameConfiguration.timeout.byTurn
 		state.players[turnPlayer]!.timeout = Math.min(maxTimeout, (state.players[turnPlayer]!.timeout - GameConfiguration.timeout.fixed) + GameConfiguration.timeout.byTurn);
 
-		goToSetupPhase(state, turnPlayer);
-		fillHand(state, turnPlayer, GameConfiguration.drawSizePerTurns, 1, EventReason.GAMERULE);
-		resetPlayerCardAttackCount(state, turnPlayer);
+		await goToSetupPhase(state, event.context);
+		await fillHand(state, event.context, turnPlayer, GameConfiguration.drawSizePerTurns, 1);
+		resetPlayerCardAttackCount(state, event.context, turnPlayer);
 	}
 
 	export function end(state: GameState, result: GameResult) {
@@ -820,15 +867,15 @@ export namespace Match {
 				return false;
 		};
 
-		return hasUseableActivateAbility(state, card.owner, card);
+		return hasUseableActivateAbility(state, card);
 	}
 
-	export function resetPlayerCardAttackCount(state: GameState, playerId: string) {
+	export function resetPlayerCardAttackCount(state: GameState, context: GameEventContext, playerId: string) {
 		let cardsToBeReset = getCards(state, CardLocation.SERVE_ZONE, playerId);
 		cardsToBeReset.forEach(card => {
 			resetCardAttackCount(state, card);
 		});
-		updateCards(state, cardsToBeReset, EventReason.GAMERULE, playerId);
+		updateCards(state, context, cardsToBeReset);
 	}
 	
 	export function resetCardAttackCount(state: GameState, card: Card) {
@@ -852,7 +899,7 @@ export namespace Match {
 		}
 	}
 
-	export async function battle(state: GameState, playerId: string, attackingCard: Card, targetCard: Card): Promise<void> {
+	export async function battle(state: GameState, context: GameEventContext, attackingCard: Card, targetCard: Card): Promise<void> {
 		if (!isCardCanAttack(state, attackingCard)) {
 			return;
 		}
@@ -860,8 +907,7 @@ export namespace Match {
 		let declareAttackEvent: GameEvent & { type: "declare_attack" } = { 
 			id: newUUID(state), 
 			type: "declare_attack",
-			sourcePlayer: playerId, 
-			reason: EventReason.BATTLE, 
+			context: context,
 			attackingCard: attackingCard, 
 			isDirect: false, 
 			targetCard: targetCard,
@@ -872,25 +918,25 @@ export namespace Match {
 		let attackEvent: GameEvent = {
 			id: newUUID(state),
 			type: "attack",
-			sourcePlayer: declareAttackEvent.sourcePlayer,
-			reason: declareAttackEvent.reason,
+			context: declareAttackEvent.context,
 			attackingCard: declareAttackEvent.attackingCard,
 			isDirect: false,
 			targetCard: declareAttackEvent.targetCard
 		};
 		attackEvent = await pushEvent(state, attackEvent);
+		attackEvent.context.reason |= EventReason.BATTLE
 
 		if (isCardCanAttack(state, attackEvent.attackingCard)) {
 			let targetPower = Card.getPower(attackEvent.targetCard);
 			let attackerPower = Card.getPower(attackEvent.attackingCard);
-			damage(state, [attackEvent.attackingCard], targetPower, EventReason.BATTLE, playerId);
-			damage(state, [attackEvent.targetCard], attackerPower, EventReason.BATTLE, playerId);				
+			damage(state, attackEvent.context, [attackEvent.attackingCard], targetPower);
+			damage(state, attackEvent.context, [attackEvent.targetCard], attackerPower);				
 		}
 		removeCardAttackCount(state, attackingCard);
 
 	}
 
-	export async function attackPlayer(state: GameState, playerId: string, attackingCard: Card, targetPlayerId: string): Promise<void> {
+	export async function attackPlayer(state: GameState, context: GameEventContext, attackingCard: Card, targetPlayerId: string): Promise<void> {
 		if (!isCardCanAttack(state, attackingCard)) {
 			return;
 		}
@@ -898,8 +944,7 @@ export namespace Match {
 		let attackDeclareEvent: GameEvent & { type: "declare_attack" } = { 
 			id: newUUID(state), 
 			type: "declare_attack",
-			sourcePlayer: playerId, 
-			reason: EventReason.BATTLE, 
+			context: context,
 			attackingCard: attackingCard, 
 			isDirect: true, 
 			targetPlayer: targetPlayerId,
@@ -910,17 +955,17 @@ export namespace Match {
 		let attackEvent: GameEvent = {
 			id: newUUID(state),
 			type: "attack",
-			sourcePlayer: attackDeclareEvent.sourcePlayer,
-			reason: attackDeclareEvent.reason,
+			context: attackDeclareEvent.context,
 			attackingCard: attackDeclareEvent.attackingCard,
 			isDirect: true,
 			targetPlayer: attackDeclareEvent.targetPlayer
 		};
 		attackEvent = await pushEvent(state, attackEvent);
+		attackEvent.context.reason |= EventReason.BATTLE
 
 		if (isCardCanAttack(state, attackEvent.attackingCard)) {
 			let attackerPower = Card.getPower(attackEvent.attackingCard);
-			Match.damagePlayer(state, attackEvent.targetPlayer, attackerPower, EventReason.BATTLE, playerId);			
+			Match.damagePlayer(state, attackEvent.context, attackEvent.targetPlayer, attackerPower);			
 		}
 		removeCardAttackCount(state, attackingCard);
 		
@@ -934,26 +979,26 @@ export namespace Match {
 		return state.turnPhase === "strike"
 	}
 
-	export function addBuff(state: GameState, cards: Array<Card>, buff: CardBuff) {
+	export function addBuff(state: GameState, context: GameEventContext, cards: Array<Card>, buff: CardBuff) {
 		for (let card of cards) {
 			state.buffs[card.id] = state.buffs[card.id].concat(buff)
 			//state.log?.debug("addBuff: buffs: %s", JSON.stringify(state.buffs[card.id]))
 			//state.log?.debug("addBuff: buffs: %s", JSON.stringify(getBuffs(state, card)))
 			reapplyBuffs(state, card);
 		}
-		updateCards(state, cards, EventReason.UNSPECIFIED, "");
+		updateCards(state, context, cards);
 	}
 
 	export function getBuffs(state: GameState, card: Card): Array<CardBuff> {
 		return state.buffs[card.id];
 	}
 
-	export function removeBuffs(state: GameState, cards: Array<Card>, condition: (buff: CardBuff) => boolean) {
+	export function removeBuffs(state: GameState, context: GameEventContext, cards: Array<Card>, condition: (buff: CardBuff) => boolean) {
 		for (let card of cards) {
 			state.buffs[card.id] = state.buffs[card.id].filter(buff => !condition(buff));
 			reapplyBuffs(state, card);
 		}
-		updateCards(state, cards, EventReason.UNSPECIFIED, "");
+		updateCards(state, context, cards);
 	}
 
 	export function getBuffById(state: GameState, card: Card, id: string): CardBuff | null {
@@ -991,10 +1036,6 @@ export namespace Match {
 				dispatched: false
 			};
 		})
-
-	}
-
-	export function isResponseMatchingCurrentRequest(state: GameState, response: PlayerChoiceResponse) {
 
 	}
 
@@ -1161,8 +1202,9 @@ export namespace Match {
 		let firstPlayer = getOpponent(state, turnPlayer);
 		let secondPlayer = turnPlayer;
 
-		for (let player of [firstPlayer, secondPlayer]) {
-			let playerEffects = triggerEffectsGroupedByOwner[player];
+		for (let { key, items} of triggerEffectsGroupedByOwner) {
+			let player = key
+			let playerEffects = items;
 			if (playerEffects && playerEffects.length > 0) {
 				setSelectionHint(state, "HINT_ACTIVATE_TRIGGER");
 				let selected = await makePlayerSelectCards(state, player, playerEffects.map(e => e.effect.card), 0, 1);
@@ -1177,7 +1219,11 @@ export namespace Match {
 						//	effect: triggeringAbilityEntry.effect,
 						//	event: triggeringAbilityEntry.event
 						//});
-						await resolveAbility(state, triggeringAbilityEntry.effect, triggeringAbilityEntry.event);
+						let activateContext: GameEventContext = { 
+							reason: EventReason.ACTIVATE,
+							player: player
+						}
+						await resolveAbility(state, activateContext, triggeringAbilityEntry.effect, triggeringAbilityEntry.event);
 						//state.resolvingTriggerAbility = false;
 						// skip any remaining to restrict one trigger effect on any action at the time
 						return true;

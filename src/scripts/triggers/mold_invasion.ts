@@ -15,7 +15,7 @@ const MOLD_INVASION_EFFECT: CardEffect = {
 		if (!event || event.type !== "set") return;
 		let discardOptions = Match.findCards(state, c => c.id !== card.id, CardLocation.HAND, player);
 		let discardChoice = await Match.makePlayerSelectCards(state, player, discardOptions, 1, 1);
-		await Match.discard(state, discardChoice, player, EventReason.EFFECT | EventReason.COST);
+		await Match.discard(state, { player: player, reason: EventReason.EFFECT | EventReason.COST }, discardChoice);
 
 		if (Card.getGrade(event.card) > 1) {
 			let debuff: CardBuff = {
@@ -26,10 +26,10 @@ const MOLD_INVASION_EFFECT: CardEffect = {
 				sourceCard: card,
 				resets: CardBuffResetCondition.TARGET_REMOVED
 			};
-			Match.addBuff(state, [event.card], debuff);
+			Match.addBuff(state, { player: player, reason: EventReason.EFFECT }, [event.card], debuff);
 		}
 		else {
-			await Match.destroy(state, [event.card], player, EventReason.EFFECT);
+			await Match.destroy(state, { player: player, reason: EventReason.EFFECT }, [event.card]);
 		}
 	},
 }

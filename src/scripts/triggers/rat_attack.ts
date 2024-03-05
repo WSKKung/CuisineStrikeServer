@@ -15,9 +15,9 @@ const RAT_ATTACK_EFFECT: CardEffect = {
 		if (!event || event.type !== "summon") return;
 		let discardOptions = Match.findCards(state, c => c.id !== card.id, CardLocation.HAND, player);
 		let discardChoice = await Match.makePlayerSelectCards(state, player, discardOptions, 1, 1);
-		await Match.discard(state, discardChoice, player, EventReason.EFFECT | EventReason.COST);
+		await Match.discard(state, { player: player, reason: EventReason.EFFECT | EventReason.COST }, discardChoice);
 
-		await Match.damage(state, [event.card], RAT_ATTACK_DAMAGE, EventReason.EFFECT, player);
+		await Match.damage(state, { player: player, reason: EventReason.EFFECT }, [event.card], RAT_ATTACK_DAMAGE);
 		//event.negated = true;
 	},
 }

@@ -11,7 +11,7 @@ const FORK_TRAP_EFFECT: CardEffect = {
 	},
 	async activate({ state, player, card, event }) {
 		if (!event || event.type !== "declare_attack") return;
-		Match.damage(state, [ event.attackingCard ], 5, EventReason.EFFECT, player);
+		Match.damage(state, { player: player, reason: EventReason.EFFECT }, [ event.attackingCard ], 5);
 		//event.negated = true;
 	},
 }

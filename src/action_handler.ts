@@ -2,13 +2,9 @@ import { GameState, Match, TurnPhase } from "./match";
 import { GameStorageAccess } from "./wrapper";
 import { DishSummonProcedure } from "./cards/cook_summon_procedure";
 import { Recipe } from "./model/recipes";
-import { CardLocation, Card, CardType } from "./model/cards";
-import zod from "zod";
-import { GameConfiguration } from "./constants";
-import { SetIngredientActionParams, CookSummonActionParams, AttackActionParams, ActionType, actionSchemas, ActivateActionCardParams, ChooseCardsParams, getPlayerActionSchemaByType, PlayerActionParams, PlayerActionParamsActivate, PlayerActionParamsChooseCards, PlayerActionParamsAttack, PlayerActionParamsCookSummon, PlayerActionParamsSetIngredient, PlayerActionParamsToStrikePhase, PlayerActionParamsEndTurn, PlayerActionParamsChooseZones, PlayerActionParamsChooseYesNo, PlayerActionParamsChooseOption } from "./action_schema";
+import { CardLocation, Card } from "./model/cards";
+import { ActionType, getPlayerActionSchemaByType, PlayerActionParams, PlayerActionParamsActivate, PlayerActionParamsChooseCards, PlayerActionParamsAttack, PlayerActionParamsCookSummon, PlayerActionParamsSetIngredient, PlayerActionParamsToStrikePhase, PlayerActionParamsEndTurn, PlayerActionParamsChooseZones, PlayerActionParamsChooseYesNo, PlayerActionParamsChooseOption } from "./action_schema";
 import { BUFF_ID_OVERGRADED, CardBuff, CardBuffResetCondition } from "./buff";
-import { CardEffectProvider, CardEffectContext, CardActivateEffect } from "./model/effect";
-import { registerCardEffectScripts } from "./scripts";
 import { EventReason } from "./model/events";
 
 export type ActionHandlerResult = {
@@ -79,7 +75,7 @@ function validateParams<T extends ActionType>(type: T, next: TypedActionHandleFu
 	};
 }
 const endTurnActionHandler: ActionHandleFunction<PlayerActionParamsEndTurn> = (context, params) => {
-	Match.gotoNextTurn(context.gameState, context.senderId);
+	Match.gotoNextTurn(context.gameState, { player: context.senderId, reason: EventReason.UNSPECIFIED });
 	return { success: true };
 }
 
@@ -87,7 +83,7 @@ const goToStrikePhaseActionHandler: ActionHandleFunction<PlayerActionParamsToStr
 	if (!Match.isSetupPhase(context.gameState)) {
 		return { success: false, data: { reason: "INVALID_PHASE" } };
 	}
-	Match.goToStrikePhase(context.gameState, context.senderId);
+	Match.goToStrikePhase(context.gameState, { player: context.senderId, reason: EventReason.UNSPECIFIED });
 	return { success: true };
 }
 
@@ -139,11 +135,11 @@ const setIngredientHandler: ActionHandleFunction<PlayerActionParamsSetIngredient
 
 	// send material to trash
 	if (materials.length > 0) {
-		Match.discard(state, materials, playerId, EventReason.SET | EventReason.COST);
+		Match.discard(state, { player: context.senderId, reason: EventReason.SET | EventReason.COST }, materials);
 	}
 
 	// place card onto the field
-	Match.setToStandby(state, cardToBeSet!, playerId, columnToBeSet);
+	Match.setToStandby(state, { player: context.senderId, reason: EventReason.UNSPECIFIED }, cardToBeSet!, playerId, columnToBeSet);
 
 	return { success: true , data: { card: cardIdToBeSet, column: columnToBeSet, materials: materialsId } };
 }
@@ -211,10 +207,10 @@ const dishSummonHandler: ActionHandleFunction<PlayerActionParamsCookSummon> = (c
 	}
 
 	// Send materials to trash
-	Match.discard(state, materials, playerId, EventReason.SUMMON | EventReason.COST);
+	Match.discard(state, { player: context.senderId, reason: EventReason.SUMMON | EventReason.COST }, materials);
 	
 	// place card onto the field
-	Match.summon(state, cardToSummon!, playerId, columnToSummon, EventReason.SUMMON, params.quick_set);
+	Match.summon(state, { player: context.senderId, reason: EventReason.UNSPECIFIED }, cardToSummon!, playerId, columnToSummon, params.quick_set);
 
 	if (bonus_grade > 0) {
 		let overgradedBuff: CardBuff = {
@@ -225,7 +221,7 @@ const dishSummonHandler: ActionHandleFunction<PlayerActionParamsCookSummon> = (c
 			amount: bonus_grade,
 			resets: CardBuffResetCondition.SOURCE_REMOVED | CardBuffResetCondition.TARGET_REMOVED
 		}
-		Match.addBuff(state, [cardToSummon!], overgradedBuff);		
+		Match.addBuff(state, { player: context.senderId, reason: EventReason.SUMMON }, [cardToSummon!], overgradedBuff);		
 	}
 
 	return { success: true, data: { card: cardIdToSummon, column: columnToSummon, materials: materialsId } };
@@ -267,7 +263,7 @@ const attackActionHandler: ActionHandleFunction<PlayerActionParamsAttack> = (con
 			return { success: false, data: { reason: "CANNOT_ATTACK_DIRECTLY" } };
 		}
 
-		Match.attackPlayer(state, playerId, attackingCard, opponent);
+		Match.attackPlayer(state, { player: context.senderId, reason: EventReason.UNSPECIFIED }, attackingCard, opponent);
 	}
 	// Battle with another card
 	else {
@@ -284,7 +280,7 @@ const attackActionHandler: ActionHandleFunction<PlayerActionParamsAttack> = (con
 			return { success: false, data: { reason: "ATTACK_TARGET_CARD_INVALID" } };
 		}
 
-		Match.battle(state, playerId, attackingCard, targetCard);
+		Match.battle(state, { player: context.senderId, reason: EventReason.UNSPECIFIED }, attackingCard, targetCard);
 	}
 
 	return { success: true, data: { } };
@@ -313,7 +309,7 @@ const activateActionCardHandler: ActionHandleFunction<PlayerActionParamsActivate
 		return { success: false, data: { reason: "TARGET_CARD_CANNOT_USE_ABILITY" } };
 	}
 
-	Match.activateAbility(state, playerId, activatedCard);
+	Match.activateAbility(state, { player: context.senderId, reason: EventReason.UNSPECIFIED }, activatedCard);
 
 	return { success: true, data: {} };
 }

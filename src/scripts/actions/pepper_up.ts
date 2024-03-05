@@ -2,6 +2,7 @@ import { CardBuff, CardBuffResetCondition } from "../../buff";
 import { Card, CardLocation } from "../../model/cards";
 import { Match } from "../../match";
 import { CardEffect } from "../../model/effect";
+import { EventReason } from "../../model/events";
 
 const PEPPER_UP_EFFECT: CardEffect = {
 	type: "activate",
@@ -20,7 +21,7 @@ const PEPPER_UP_EFFECT: CardEffect = {
 			amount: 3,
 			resets: CardBuffResetCondition.END_TURN | CardBuffResetCondition.TARGET_REMOVED
 		}
-		Match.addBuff(context.state, choice, atkBoostBuff);
+		Match.addBuff(context.state, { player: context.player, reason: EventReason.EFFECT }, choice, atkBoostBuff);
 	}
 };
 

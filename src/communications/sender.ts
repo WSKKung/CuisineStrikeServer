@@ -34,10 +34,16 @@ type AvailableCardActionPacket = {
 type CardPacket = {
 	id: string,
 	is_owned: boolean,
+	zone: ZonePacket,
+	sequence: number,
 	base_properties?: CardPropertiesPacket,
 	properties?: CardPropertiesPacket,
+}
+
+type ZonePacket = {
 	location: number,
-	column: number
+	column: number,
+	owned: boolean
 }
 
 type CardPropertiesPacket = {
@@ -113,13 +119,20 @@ function localizeSingleCardData(card: Card, state: GameState, playerId: string, 
 		is_owned: isCardOwner,
 		base_properties: localizeCardProperties(card.baseProperties, !isDataPublicForPlayer),
 		properties: localizeCardProperties(card.properties, !isDataPublicForPlayer),
-		location: Card.getLocation(card),
-		column: Card.getColumn(card)
-
+		zone: {
+			location: Card.getLocation(card),
+			column: Card.getColumn(card),
+			owned: isCardOwner
+		},
+		sequence: card.sequence
 	};
 }
 
 function localizeCardData(cards: Array<Card>, state: GameState, playerId: string, force_mode: "public" | "private" | "none" = "none"): Array<CardPacket> {
+	if (!cards) {
+		state.log?.error(`${DEBUG.EVENT.type} provided null cards!`)
+		return []
+	}
 	return cards.map(card => localizeSingleCardData(card, state, playerId, force_mode));
 }
 
@@ -134,12 +147,18 @@ export function deferSendToPlayer(dispatcher: MatchMessageDispatcher, opCode: nu
 export function sendCurrentMatchState(state: GameState, dispatcher: MatchMessageDispatcher, playerId: string) {
 	// send card data in batch to prevent overflowing client buffer
 	let opponent = Match.getOpponent(state, playerId);
+
 	let cards = Match.getCards(state, CardLocation.ANYWHERE);
-	let cardGroupedByOwner = ArrayUtil.group(cards, card => Card.getOwner(card));
-	for (let owner in cardGroupedByOwner) {
-		let cardGroupedByLocation = ArrayUtil.group<Card, string>(cardGroupedByOwner[owner], card => Card.getLocation(card) + "");
-		for (let location in cardGroupedByLocation) {
-			let cardPacket = localizeCardData(cardGroupedByLocation[location], state, playerId);
+	let ownerCardGroup = ArrayUtil.group(cards, card => Card.getOwner(card));
+	for (let { key, items } of ownerCardGroup) {
+		let owner = key
+		let ownerGroupedCards = items
+		let locationCardGroup = ArrayUtil.group(ownerGroupedCards, card => Card.getLocation(card));
+		for (let { key, items } of locationCardGroup) {
+			let location = key
+			let locationGroupedCards = items
+			//state.log?.debug("send card init match state: location=" + location + " owner=" + owner)
+			let cardPacket = localizeCardData(locationGroupedCards, state, playerId);
 			sendToPlayer(dispatcher, MatchEventCode.UPDATE_CARD, { cards: cardPacket, reason: EventReason.INIT }, playerId);
 		}
 	}
@@ -164,18 +183,39 @@ export function broadcastMatchState(state: GameState, dispatcher: MatchMessageDi
 	});
 }
 
+const DEBUG = {
+	EVENT: {
+		type: ""
+	}
+}
+
 export function broadcastMatchEvent(state: GameState, dispatcher: MatchMessageDispatcher, event: GameEvent) {
+	DEBUG.EVENT.type = event.type
 	switch (event.type) {
 		case "update_card":
 			Match.forEachPlayers(state, playerId => {
 				let packet = {
 					cards: localizeCardData(event.cards, state, playerId),
-					reason: event.reason
+					reason: event.context.reason
 				}
 				sendToPlayer(dispatcher, MatchEventCode.UPDATE_CARD, packet, playerId);
 			});
 			break;
-		
+
+		case "shuffle":
+			Match.forEachPlayers(state, playerId => {
+				let packet = {
+					zone: {
+						location: event.location,
+						column: event.column,
+						owned: event.player === playerId
+					},
+					sequences: event.sequences
+				}
+				sendToPlayer(dispatcher, MatchEventCode.SHUFFLE, packet, playerId);
+			});
+			break;
+
 		case "update_hp":
 			Match.forEachPlayers(state, playerId => {
 				let packet = {
@@ -185,18 +225,6 @@ export function broadcastMatchEvent(state: GameState, dispatcher: MatchMessageDi
 				sendToPlayer(dispatcher, MatchEventCode.UPDATE_PLAYER_HP, packet, playerId);
 			});
 			break;
-		
-			/*
-		case "change_hp":
-			Match.forEachPlayers(state, playerId => {
-				let packet = {
-					is_you: playerId === event.player,
-					amount: event.amount
-				}
-				sendToPlayer(dispatcher, MatchEventCode.UPDATE_PLAYER_HP, packet, playerId);
-			});
-			break;
-			*/
 
 		case "change_phase":
 			Match.forEachPlayers(state, playerId => {
@@ -254,7 +282,7 @@ export function broadcastMatchEvent(state: GameState, dispatcher: MatchMessageDi
 			Match.forEachPlayers(state, playerId => {
 				let packet = {
 					card: localizeSingleCardData(event.card, state, playerId, "public"),
-					player: event.sourcePlayer
+					player: event.context.player
 				};
 				sendToPlayer(dispatcher, MatchEventCode.ACTIVATE, packet, playerId);
 			});
@@ -268,6 +296,7 @@ export function broadcastMatchEvent(state: GameState, dispatcher: MatchMessageDi
 			sendResponseChoiceAction(state, dispatcher, event.response);
 			break;
 		
+			/*
 		case "destroy":
 			Match.forEachPlayers(state, playerId => {
 				let packet = {
@@ -303,7 +332,7 @@ export function broadcastMatchEvent(state: GameState, dispatcher: MatchMessageDi
 				};
 				sendToPlayer(dispatcher, MatchEventCode.RECYCLE_CARD, packet, playerId);
 			});
-			break;
+			break;*/
 	}
 }
 

@@ -18,7 +18,7 @@ const DREAMY_SHLEEP_EFFECT: CardEffect = {
 		Match.setSelectionHint(context.state, "Select a card to discard")
 		let discardOptions = Match.getCards(context.state, CardLocation.HAND, context.player);
 		let discardChoice = await Match.makePlayerSelectCards(context.state, context.player, discardOptions, 1, 1);
-		await Match.discard(context.state, discardChoice.concat(context.card), context.player, EventReason.EFFECT | EventReason.COST);
+		await Match.discard(context.state, { player: context.player, reason: EventReason.EFFECT | EventReason.COST }, discardChoice.concat(context.card));
 
 		// set
 		Match.setSelectionHint(context.state, "Select a card to Set to the field")
@@ -26,7 +26,7 @@ const DREAMY_SHLEEP_EFFECT: CardEffect = {
 		let setChoice = await Match.makePlayerSelectCards(context.state, context.player, setOptions, 1, 1);
 		let setZoneChoice = await Match.makePlayerSelectFreeZone(context.state, context.player, CardLocation.STANDBY_ZONE, context.player);
 		if (setZoneChoice) {
-			await Match.setToStandby(context.state, setChoice[0], context.player, setZoneChoice.column);
+			await Match.setToStandby(context.state, { player: context.player, reason: EventReason.EFFECT }, setChoice[0], context.player, setZoneChoice.column);
 		}
 		
 		let gradeBuff: CardBuff = {
@@ -37,7 +37,7 @@ const DREAMY_SHLEEP_EFFECT: CardEffect = {
 			amount: 1,
 			resets: CardBuffResetCondition.TARGET_REMOVED
 		};
-		Match.addBuff(context.state, setChoice, gradeBuff);
+		Match.addBuff(context.state, { player: context.player, reason: EventReason.EFFECT }, setChoice, gradeBuff);
 
 	},
 }

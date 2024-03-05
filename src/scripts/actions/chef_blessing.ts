@@ -19,7 +19,7 @@ const CHEF_BLESSING_EFFECT: CardEffect = {
 	async activate(context) {
 		Match.setSelectionHint(context.state, "Select a card to discard")
 		let discardChoice: Array<Card> = await Match.makePlayerSelectCards(context.state, context.player, Match.findCards(context.state, (card) => costFilter(context, card), CardLocation.HAND, context.player), 1, 1);
-		await Match.discard(context.state, discardChoice, context.player, EventReason.EFFECT);
+		await Match.discard(context.state, { player: context.player, reason: EventReason.EFFECT }, discardChoice);
 		
 		Match.setSelectionHint(context.state, "Select a Dish to grant buff")
 		let choice: Array<Card> = await Match.makePlayerSelectCards(context.state, context.player, Match.getCards(context.state, CardLocation.SERVE_ZONE, context.player), 1, 1);
@@ -35,9 +35,9 @@ const CHEF_BLESSING_EFFECT: CardEffect = {
 		defBuff.type = "health"
 		let gradeBuff = Utility.shallowClone(atkBuff) as CardBuff;
 		gradeBuff.type = "grade"
-		Match.addBuff(context.state, choice, atkBuff);
-		Match.addBuff(context.state, choice, defBuff);
-		Match.addBuff(context.state, choice, gradeBuff);
+		Match.addBuff(context.state, { player: context.player, reason: EventReason.EFFECT }, choice, atkBuff);
+		Match.addBuff(context.state, { player: context.player, reason: EventReason.EFFECT }, choice, defBuff);
+		Match.addBuff(context.state, { player: context.player, reason: EventReason.EFFECT }, choice, gradeBuff);
 	}
 };
 

@@ -136,25 +136,34 @@ export namespace ArrayUtil {
 		return countArray;
 	}
 
-	export function seperate<T>(array: Array<T>, filterFunction: (value: T) => boolean): ({ 0: Array<T>, 1: Array<T> }) {
-		let result: { 0: Array<T>, 1: Array<T> } = { 0: [], 1: [] };
+	export function group<T, K>(array: Array<T>, groupFunction: (value: T) => K): Array<{ key: K, items: Array<T> }> {
+		let result: Array<{ key: K, items: Array<T> }> = [];
 		for (let element of array) {
-			if (filterFunction(element)) {
-				result[1].push(element);
-			} else {
-				result[0].push(element);
+			let groupKey: K = groupFunction(element);
+			let groupEntry: { key: K, items: Array<T> } | undefined = result.find(entry => entry.key == groupKey);
+			if (!groupEntry) {
+				groupEntry = { key: groupKey , items: [] }
+				result.push(groupEntry);
+			}
+			groupEntry.items.push(element);
+		}
+		return result;
+	}
+
+	export function range(min: number, maxExclusive: number, step: number = 1): Array<number> {
+		let array: Array<number> = [];
+		if (step >= 0) {
+			for (let i = min; i < maxExclusive; i += step) {
+				array.push(i);
+			}
+		} else {
+			for (let i = min; i > maxExclusive; i += step) {
+				array.push(i);
 			}
 		}
-		return result;
+		return array;
 	}
-	export function group<T, K extends string | number | symbol>(array: Array<T>, groupFunction: (value: T) => K): Record<K, Array<T>> {
-		let result: Record<K , Array<T>> = {} as Record<K , Array<T>>;
-		for (let element of array) {
-			let groupKey = groupFunction(element);
-			result[groupKey] = (result[groupKey] || []).concat(element);
-		}
-		return result;
-	}
+	
 }
 
 export namespace BitField {

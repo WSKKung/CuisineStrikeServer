@@ -33,6 +33,7 @@ const InitModule: nkruntime.InitModule = function(ctx, logger, nk, initializer) 
 	
 	initializer.registerRpc("GetCollection", getCollectionRPC);
 	initializer.registerRpc("AddToCollection", addToCollectionRPC);
+
 	
 };
 
@@ -63,8 +64,11 @@ const beforeAuthenticateLogin: nkruntime.BeforeHookFunction<nkruntime.Authentica
 }
 
 const afterAuthenticateEmail: nkruntime.AfterHookFunction<nkruntime.Session, nkruntime.AuthenticateEmailRequest> = function(ctx, logger, nk, data, request) {
+	
 	//logger.debug("debug after auth: data=%s, req=%s, ctx=%s", JSON.stringify(data), JSON.stringify(request), JSON.stringify(ctx));
 	let currentUsers = nk.usersGetId([ ctx.userId ]);
+	//let account = nk.accountGetId(ctx.userId);
+	//let userMetadata = account.user.metadata;
 	if (currentUsers.length > 0) {
 		logger.debug("users exists: %s", JSON.stringify(currentUsers))
 		//nk.sessionLogout(currentUsers[0].userId);

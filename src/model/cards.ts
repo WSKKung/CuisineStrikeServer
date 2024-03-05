@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { BitField, Utility } from "../utility";
 import { CamelKeysToSnake } from "../utility/types";
+import { CardEffectInstance } from "./effect";
+import { CardBuff } from "../buff";
 
 export type CardID = string;
 
@@ -30,11 +32,14 @@ export enum CardLocation {
 
 // Should be stored as a bitmask
 export enum CardClass {
-	UNKNOWN = 0b0,
-	GRAIN = 0b1,
-	MEAT = 0b10,
-	BREAD = 0b100,
-	EGG = 0b1000
+	UNKNOWN = 0x0,
+	GRAIN = 0x1,
+	MEAT = 0x2,
+	BREAD = 0x4,
+	EGG = 0x8,
+	VEGETABLE = 0x10,
+	FRUIT = 0x20,
+	DAIRY = 0x40,
 }
 
 export type CardProperties = {
@@ -55,8 +60,11 @@ export type Card = {
 	properties: CardProperties,
 	location: CardLocation,
 	column: number,
+	sequence: number,
 	damage: number,
-	attacks: number
+	attacks: number,
+	abilities: Array<CardEffectInstance>,
+	buffs: Array<CardBuff>
 }
 
 export const CardSchemas = {
@@ -86,8 +94,11 @@ export namespace Card {
 			properties,
 			location: CardLocation.VOID,
 			column: 0,
+			sequence: 0,
 			damage: 0,
-			attacks: 0
+			attacks: 0,
+			abilities: [],
+			buffs: []
 		};
 		return card;
 	}
