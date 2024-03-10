@@ -6,6 +6,7 @@ import { dumpGameStateRPC, recipeCheckRPC } from "./src/test/test_rpcs";
 import { NakamaAdapter } from "./src/wrapper";
 import { addToCollectionRPC, getCollectionRPC } from "./src/controllers/card_collection";
 import { getDecklistRPC, updateDeckRPC, setActiveDeckRPC, validateDeckRPC, addDeckRPC, deleteDeckRPC } from "./src/controllers/deck_building";
+import { createPrivateRoomRpc } from "./src/controllers/matchmaking";
 
 const InitModule: nkruntime.InitModule = function(ctx, logger, nk, initializer) {
 	logger.info("Typescript Runtime initializing");
@@ -33,7 +34,8 @@ const InitModule: nkruntime.InitModule = function(ctx, logger, nk, initializer) 
 	
 	initializer.registerRpc("GetCollection", getCollectionRPC);
 	initializer.registerRpc("AddToCollection", addToCollectionRPC);
-
+	
+	initializer.registerRpc("CreatePrivateRoom", createPrivateRoomRpc);
 	
 };
 
