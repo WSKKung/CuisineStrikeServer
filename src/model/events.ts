@@ -189,4 +189,5 @@ export enum EventReason {
 	INIT = 0x400,
 	RECYCLED = 0x800,
 	DISCARDED = 0x1000,
+	SURRENDER = 0x2000
 }

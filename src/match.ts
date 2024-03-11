@@ -6,8 +6,7 @@ import { GameConfiguration } from "./constants";
 import { ArrayUtil, BitField, Utility } from "./utility";
 import { BUFF_ID_DAMAGED, CardBuff, CardBuffResetCondition as CardBuffResetFlag } from "./buff";
 import { CardEffect, CardEffectContext, CardEffectInstance, CardEffectUseLimit } from "./model/effect";
-import { PlayerChoiceRequest, PlayerChoiceResponse, PlayerChoiceResponseValue, PlayerChoiceType } from "./model/player_request";
-import { sendRequestChoiceAction } from "./communications/sender";
+import { PlayerChoiceRequest, PlayerChoiceRequestCards, PlayerChoiceResponse, PlayerChoiceResponseCards, PlayerChoiceResponseValue, PlayerChoiceType } from "./model/player_request";
 import { EndResultStringKeys } from "./communications/string_keys";
 
 export interface GameResult {
@@ -15,12 +14,32 @@ export interface GameResult {
 	reason: string
 }
 
-type EventQueue = Array<{
+export type EventQueue = Array<{
 	event: GameEvent
 	resolve(): void
 	reject(): void
 	resolved: boolean
 }>
+
+export type GamePauseStatus = GamePauseStatusDisconnected |
+	GamePauseStatusPlayerRequest |
+	GamePauseStatusSyncReady
+export interface GamePauseStatusDisconnected {
+	reason: "disconnected",
+	timeout: TimerHandler
+}
+
+export interface GamePauseStatusPlayerRequest {
+	reason: "player_request",
+	request: PlayerChoiceRequest,
+	response: PlayerChoiceResponse | null,
+	dispatched: boolean
+}
+
+export interface GamePauseStatusSyncReady {
+	reason: "sync_ready",
+	remainingPlayers: Array<string>
+}
 
 export interface GameState extends nkruntime.MatchState {
 	//TODO: Decoupling GameState from Nakama state altogether
@@ -31,20 +50,21 @@ export interface GameState extends nkruntime.MatchState {
 	buffs: {[id: CardID]: Array<CardBuff>},
 	effects: {[id: CardID]: Array<CardEffectInstance>},
 	attackCount: {[id: CardID]: number}
-	status: "init" | "running" | "ended",
+	status: "init" | "running" | "paused" | "ended",
 	turnPlayer: string,
 	turnCount: number,
 	turnPhase: TurnPhase
 	endResult: GameResult | null,
 	eventQueue: EventQueue,
 	resolvedEventQueue: EventQueue,
+	onHeldEventQueue: EventQueue,
 	activeRequest?: {
 		request: PlayerChoiceRequest,
 		response: PlayerChoiceResponse | null,
 		dispatched: boolean
 	} | null,
 	nextHintMessage?: string,
-	resolvingTriggerAbility: boolean
+	pauseStatus: GamePauseStatus | null
 }
 
 export interface PlayerData {
@@ -58,8 +78,14 @@ export interface PlayerData {
 	trash: CardZone,
 	serveZones: Array<CardZone>,
 	standbyZone: Array<CardZone>,
-	timeout: number,
+	timer: PlayerTimer,
 	online: boolean
+}
+
+export interface PlayerTimer {
+	remainingTurnTime: number,
+	remainingMatchTime: number,
+	paused: boolean
 }
 
 export type TurnPhase = "setup" | "strike"
@@ -86,7 +112,11 @@ export namespace Match {
 			hp: GameConfiguration.initialHP,
 			prevHp: GameConfiguration.initialHP,
 			online: false,
-			timeout: GameConfiguration.timeout.fixed + GameConfiguration.timeout.byTurn,
+			timer: {
+				remainingMatchTime: GameConfiguration.playerTimer.matchTime,
+				remainingTurnTime: GameConfiguration.playerTimer.turnTime,
+				paused: false
+			},
 			hand, mainDeck, recipeDeck, trash, serveZones, standbyZone
 		};
 	}
@@ -104,8 +134,9 @@ export namespace Match {
 			endResult: null,
 			eventQueue: [],
 			resolvedEventQueue: [],
+			onHeldEventQueue: [],
 			attackCount: {},
-			resolvingTriggerAbility: false
+			pauseStatus: null
 		};
 	}
 
@@ -202,6 +233,7 @@ export namespace Match {
 	}
 
 	export function updateCards(state: GameState, context: GameEventContext, cards: Array<Card>) {
+		if (cards.length <= 0) return;
 		for (let card of cards) {
 			state.cards[card.id] = card;
 		}
@@ -412,17 +444,22 @@ export namespace Match {
 	}
 
 	export function moveCardToZone(state: GameState, context: GameEventContext, cards: Array<Card>, zone: CardZone, insertLocation: "top" | "bottom") {
-		let movedCard: Array<Card> = [];
 		insertLocation = insertLocation || "top";
-		// remove each card from their previous zone
+		let affectedZones: Array<CardZone> = [ zone ]
+		let affectedCards: Array<Card> = [];
+
 		cards.forEach(card => {
+			// remove each card from their previous zone
 			let oldLocation = Card.getLocation(card);
 			let oldZone = findZones(state, oldLocation, Card.getOwner(card), Card.getColumn(card))
 			if (oldZone.length > 0) {
+				if (!affectedZones.includes(affectedZones[0])) {
+					affectedZones.push(oldZone[0])
+				}
 				oldZone[0].cards = oldZone[0].cards.filter(cardInZone => cardInZone !== card.id);
 			}
 			
-			// card left the field
+			// if card left the field
 			if (BitField.any(oldLocation, CardLocation.ON_FIELD) && !BitField.any(zone.location, CardLocation.ON_FIELD)) {
 				Card.resetProperties(card);
 				// remove its buff
@@ -438,37 +475,36 @@ export namespace Match {
 		
 		});
 
-		cards.forEach((card) => {
-			card.location = zone.location
-			card.column = zone.column
-		});
-
 		let insertStartIndex: number = 0;
 		// place a card in the new zone
 		switch (insertLocation) {
 			case "top":
 				insertStartIndex = zone.cards.length
 				zone.cards = zone.cards.concat(cards.map(c => c.id));
-				movedCard = movedCard.concat(cards);
 				break;
 			case "bottom":
 				insertStartIndex = 0
 				zone.cards = cards.map(c => c.id).concat(zone.cards);
-				movedCard = movedCard.concat(findCardsById(state, zone.cards));
 				break;
 		}
 
-		movedCard.forEach((card, index) => {
-			card.sequence = index + insertStartIndex;
-		});
+		for (let zone of affectedZones) {
+			for (let idx = 0; idx < zone.cards.length; idx++) {
+				let card = findCardByID(state, zone.cards[idx])!;
+				card.location = zone.location;
+				card.column = zone.column;
+				card.sequence = idx;
+				affectedCards.push(card);
+			}
+		}
 
-		updateCards(state, context, movedCard)
+		updateCards(state, context, affectedCards)
 
-		//const getLocations = (_cards: Array<Card>) => _cards.map(c => c.location + "").reduce((a,b) => a + " " + b, "")
+		const getLocations = (_cards: Array<Card>) => _cards.map(c => c.location + "").reduce((a,b) => a + " " + b, "")
 		// print card location list acquired from parameters: location updated correctly 
-		//state.log?.debug("card locations from parameters: " + getLocations(cards))
+		//state.log?.debug("card locations from parameters: " + getLocations(affectedCards))
 		// print card location list from card data from game state registry: location somehow did not get updated >:/
-		//state.log?.debug("card locations from game states: " + getLocations(findCardsById(state, cards.map(c => c.id))))
+		//state.log?.debug("card locations from game states: " + getLocations(findCardsById(state, affectedCards.map(c => c.id))))
 	}
 
 	export async function shuffle(state: GameState, context: GameEventContext, owner: string, location: CardLocation, column: number): Promise<void> {
@@ -626,9 +662,13 @@ export namespace Match {
 
 	}
 
+	export function getCardsFromZone(state: GameState, zone: CardZone): Array<Card> {
+		return findCardsById(state, zone.cards)
+	}
+
 	export function getCards(state: GameState, location: CardLocation, ownerId?: string, column?: number): Array<Card> {
 		let targetZones = findZones(state, location, ownerId, column);
-		return targetZones.map(zone => zone.cards).map(cards => cards.map(cardId => findCardByID(state, cardId)!)).reduce((prev, cur) => prev.concat(cur), []);
+		return targetZones.map(zone => getCardsFromZone(state, zone)).reduce((prev, cur) => prev.concat(cur), []);
 	}
 
 	export function countCards(state: GameState, location: CardLocation, ownerId?: string, column?: number): number {
@@ -639,12 +679,12 @@ export namespace Match {
 	export function findCards(state: GameState, filterCondition: (card: Card) => boolean, location: CardLocation, ownerId?: string, column?: number): Array<Card> {
 		let targetZones = findZones(state, location, ownerId, column);
 		// Same as getCards but add filter mapping in-between map and reduce
-		return targetZones.map(zone => zone.cards).map(cards => cards.map(cardId => findCardByID(state, cardId)!)).map(cards => cards.filter(filterCondition)).reduce((prev, cur) => prev.concat(cur), []);
+		return targetZones.map(zone => getCardsFromZone(state, zone)).map(cards => cards.filter(filterCondition)).reduce((prev, cur) => prev.concat(cur), []);
 	}
 
 	export function countFilterCards(state: GameState, filterCondition: (card: Card) => boolean, location: CardLocation, ownerId?: string, column?: number): number {
 		let targetZones = findZones(state, location, ownerId, column);
-		return targetZones.map(zone => zone.cards).map(cards => cards.map(cardId => findCardByID(state, cardId)!)).map(cards => cards.filter(filterCondition)).map(cards => cards.length).reduce((prev, cur) => prev + cur, 0);
+		return targetZones.map(zone => getCardsFromZone(state, zone)).map(cards => cards.filter(filterCondition)).map(cards => cards.length).reduce((prev, cur) => prev + cur, 0);
 	}
 
 	/**
@@ -702,10 +742,7 @@ export namespace Match {
 
 		// Decked out if requested top card has less card than the required count
 		if (drewCount < count) {
-			end(state, {
-				winners: Match.getActivePlayers(state).filter(otherPlayerId => otherPlayerId !== playerId),
-				reason: EndResultStringKeys.DECKED_OUT
-			});
+			makePlayerLose(state, playerId, EndResultStringKeys.DECKED_OUT);
 			return 0;
 		}
 
@@ -783,9 +820,10 @@ export namespace Match {
 
 		let turnPlayer = event.turnPlayer;
 
-		// reset timer
-		let maxTimeout = GameConfiguration.timeout.fixed + GameConfiguration.timeout.byTurn
-		state.players[turnPlayer]!.timeout = Math.min(maxTimeout, (state.players[turnPlayer]!.timeout - GameConfiguration.timeout.fixed) + GameConfiguration.timeout.byTurn);
+		// reset player turn timer
+		state.players[turnPlayer]!.timer.remainingTurnTime = GameConfiguration.playerTimer.turnTime;
+		//let maxTimeout = GameConfiguration.timeout.fixed + GameConfiguration.timeout.byTurn
+		//state.players[turnPlayer]!.timeout = Math.min(maxTimeout, (state.players[turnPlayer]!.timeout - GameConfiguration.timeout.fixed) + GameConfiguration.timeout.byTurn);
 
 		await goToSetupPhase(state, event.context);
 		await fillHand(state, event.context, turnPlayer, GameConfiguration.drawSizePerTurns, 1);
@@ -892,9 +930,9 @@ export namespace Match {
 	}
 
 	export function negateAttack(state: GameState, card: Card): void {
-		for (let event of state.eventQueue) {
-			if (event.event.type === "attack" && event.event.attackingCard.id === card.id) {
-				event.event.canceled = true;
+		for (let {event} of state.eventQueue) {
+			if (event.type === "attack" && event.attackingCard.id === card.id) {
+				event.canceled = true;
 			}
 		}
 	}
@@ -1016,44 +1054,70 @@ export namespace Match {
 		return hint;
 	}
 
-	export async function dispatchPlayerRequest<T extends PlayerChoiceType>(state: GameState, playerId: string, request: PlayerChoiceRequest & {type: T}): Promise<PlayerChoiceResponseValue<T>> {
-		/*
-		let requestEvent: GameEvent = { 
+	export function pause(state: GameState, status: GamePauseStatus): void {
+		state.status = "paused"
+		state.pauseStatus = status;
+	}
+
+	export function unpause(state: GameState): void {
+		state.status = "running"
+		state.pauseStatus = null;
+	}
+
+	export function isPaused(state: GameState): boolean {
+		return state.status === "paused";
+	}
+
+
+	export async function dispatchPlayerRequest<T extends PlayerChoiceType>(state: GameState, context: GameEventContext, request: PlayerChoiceRequest & {type: T}): Promise<void> {
+		await pushEvent(state, { 
 			id: newUUID(state), 
 			type: "request_choice", 
-			sourcePlayer: playerId, 
-			reason: EventReason.UNSPECIFIED,
+			context: context,
+			request: request
+		});
+
+		pause(state, {
+			reason: "player_request",
 			request: request,
-		};
-		pushEvent(state, requestEvent).then((event) => {
-			state.currentChoiceRequest = event.request;
-		})
-		*/
-		return new Promise((resolve, reject) => {
-			state.activeRequest = {
-				request: request,
-				response: null,
-				dispatched: false
-			};
-		})
+			response: null,
+			dispatched: false
+		});
 
 	}
 
 	export function dispatchPlayerResponse(state: GameState, playerId: string, response: PlayerChoiceResponse): void {
-		if (!state.activeRequest || state.activeRequest.request.type !== response.type) {
-			return;
-		}		
-		state.activeRequest.response = response;
+		if (state.pauseStatus && state.pauseStatus.reason === "player_request" && state.pauseStatus.request.playerId === playerId && state.pauseStatus.request.type === response.type) {
+			pushEvent(state, {
+				id: newUUID(state),
+				type: "confirm_choice",
+				context: { reason: EventReason.UNSPECIFIED, player: playerId },
+				response: response
+			});
+
+			state.pauseStatus = null
+			state.log?.debug("dispatch response " + JSON.stringify(state))
+		}
+	}
+
+	export function getPlayerActiveRequest(state: GameState, playerId: string): PlayerChoiceRequest | null {
+		if (state.pauseStatus && state.pauseStatus.reason === "player_request" && state.pauseStatus.request.playerId === playerId) {
+			return state.pauseStatus.request;
+		}
+		return null;
 	}
 
 	export function clearPlayerRequest(state: GameState): void {
-		state.activeRequest = undefined;
+		if (state.pauseStatus && state.pauseStatus.reason === "player_request") {
+			state.pauseStatus = null;
+		}
 	}
 
-	export async function makePlayerSelectCards(state: GameState, playerId: string, cards: Array<Card>, min: number, max: number = min): Promise<Array<Card>> {
+
+	export async function makePlayerSelectCards(state: GameState, context: GameEventContext, playerId: string, cards: Array<Card>, min: number, max: number = min): Promise<Array<Card>> {
 		let hintMsg = popSelectionHint(state);
 		return new Promise((resolve) => {
-			let newRequest: PlayerChoiceRequest = {
+			let newRequest: PlayerChoiceRequestCards = {
 				type: "cards",
 				playerId: playerId,
 				hint: hintMsg,
@@ -1061,7 +1125,7 @@ export namespace Match {
 				max: max,
 				cards: cards,
 				callback: (selectedCards: Array<Card>) => {
-					let response: PlayerChoiceResponse = {
+					let response: PlayerChoiceResponseCards = {
 						type: "cards",
 						playerId: playerId,
 						hint: hintMsg,
@@ -1071,11 +1135,11 @@ export namespace Match {
 					resolve(selectedCards);
 				}
 			};
-			dispatchPlayerRequest(state, playerId, newRequest);
+			dispatchPlayerRequest(state, context, newRequest);
 		});
 	}
 
-	export async function makePlayerSelectFreeZone(state: GameState, playerId: string, location: number, ownerId: string = playerId): Promise<CardZone | undefined> {
+	export async function makePlayerSelectFreeZone(state: GameState, context: GameEventContext, playerId: string, location: number, ownerId: string = playerId): Promise<CardZone | undefined> {
 		let zones = findZones(state, location, ownerId).filter(zone => zone.cards.length === 0);
 		let hintMsg = popSelectionHint(state);
 		const selectAmount = 1;
@@ -1102,12 +1166,12 @@ export namespace Match {
 					resolve(selectedZone);
 				}
 			};
-			dispatchPlayerRequest(state, playerId, newRequest);
+			dispatchPlayerRequest(state, context, newRequest);
 			
 		});
 	}
 
-	export async function makePlayerSelectYesNo(state: GameState, playerId: string): Promise<boolean> {
+	export async function makePlayerSelectYesNo(state: GameState, context: GameEventContext, playerId: string): Promise<boolean> {
 		let hintMsg = popSelectionHint(state);
 		// state.eventQueue.push({ 
 		// 	id: newUUID(state), 
@@ -1134,11 +1198,11 @@ export namespace Match {
 					resolve(choice);
 				}
 			};
-			dispatchPlayerRequest(state, playerId, newRequest);
+			dispatchPlayerRequest(state, context, newRequest);
 		});
 	}
 
-	export async function makePlayerSelectOption(state: GameState, playerId: string, options: Array<string>): Promise<number> {
+	export async function makePlayerSelectOption(state: GameState, context: GameEventContext, playerId: string, options: Array<string>): Promise<number> {
 		let hintMsg = popSelectionHint(state);
 		// state.eventQueue.push({ 
 		// 	id: newUUID(state), 
@@ -1167,7 +1231,7 @@ export namespace Match {
 					resolve(choice);
 				}
 			};
-			dispatchPlayerRequest(state, playerId, newRequest);
+			dispatchPlayerRequest(state, context, newRequest);
 		});
 	}
 
@@ -1207,7 +1271,7 @@ export namespace Match {
 			let playerEffects = items;
 			if (playerEffects && playerEffects.length > 0) {
 				setSelectionHint(state, "HINT_ACTIVATE_TRIGGER");
-				let selected = await makePlayerSelectCards(state, player, playerEffects.map(e => e.effect.card), 0, 1);
+				let selected = await makePlayerSelectCards(state, { reason: EventReason.GAMERULE, player: null }, player, playerEffects.map(e => e.effect.card), 0, 1);
 				// activate effect if any is selected
 				if (selected.length > 0) {
 					//state.resolvingTriggerAbility = true;
@@ -1237,4 +1301,19 @@ export namespace Match {
 	export function isWaitingPlayerChoice(state: GameState, playerId?: string): boolean {
 		return !!state.currentCardRequest && (!playerId || state.currentCardRequest.playerId === playerId);
 	}
+
+	export async function surrender(state: GameState, context: GameEventContext): Promise<void> {
+		if (context.player) {
+			makePlayerLose(state, context.player, EndResultStringKeys.SURRENDER);
+		}
+	}
+
+	export function updatePlayerAvailableActions(state: GameState): void {
+
+	}
+
+}
+
+function callback(chosenCards: Card[]): void {
+	throw new Error("Function not implemented.");
 }

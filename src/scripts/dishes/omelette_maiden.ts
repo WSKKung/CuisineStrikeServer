@@ -15,7 +15,7 @@ const OMELETTE_MAIDEN_EFFECT: CardEffect = {
 	async activate(context) {
 		Match.setSelectionHint(context.state, "Select a card to recycle");
 		let recycleOptions = Match.findCards(context.state, recycleFilter, CardLocation.TRASH, context.player);
-		let recycleChoice = await Match.makePlayerSelectCards(context.state, context.player, recycleOptions, 1, 1);
+		let recycleChoice = await Match.makePlayerSelectCards(context.state, { player: context.player, reason: EventReason.EFFECT }, context.player, recycleOptions, 1, 1);
 		await Match.recycle(context.state, { player: context.player, reason: EventReason.EFFECT }, recycleChoice, "shuffle");
 
 		let gainedHP = Card.getPower(recycleChoice[0]);

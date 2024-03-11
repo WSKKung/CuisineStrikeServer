@@ -3,7 +3,8 @@ export enum EndResultStringKeys {
 	HP_REACHES_ZERO = "hp_reaches_zero",
 	DECKED_OUT = "decked_out",
 	TIMEOUT = "timeout",
-	DISCONNECTED = "disconnected"
+	DISCONNECTED = "disconnected",
+	SURRENDER = "surrender"
 }
 
 export enum SelectionHintStringKeys {

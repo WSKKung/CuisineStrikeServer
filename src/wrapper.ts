@@ -60,6 +60,15 @@ export function createNakamaIDGenerator(nakamaAPI: nkruntime.Nakama): IDGenerato
 		}
 	}
 }
+
+export type NakamaMatchDispatcherCreateOptions = {
+	nk: nkruntime.Nakama,
+	logger?: nkruntime.Logger,
+	dispatcher: nkruntime.MatchDispatcher,
+	presences: PlayerPresences
+}
+
+
 export type NakamaGameStorageAccessCreateOptions = {
 	nk: nkruntime.Nakama,
 	logger?: nkruntime.Logger
@@ -70,6 +79,23 @@ export function createNakamaGameStorageAccess(options: NakamaGameStorageAccessCr
 }
 
 export namespace NakamaAdapter {
+
+	export function matchDispatcher(options: NakamaMatchDispatcherCreateOptions): MatchMessageDispatcher {
+		return {
+			dispatch(code, message, destinationPlayerIds, senderId, reliable) {
+				let destinationPresences = (destinationPlayerIds && destinationPlayerIds.map(id => options.presences[id]!)) || undefined;
+				let senderPresences = (senderId && options.presences[senderId]) || undefined;
+				options.dispatcher.broadcastMessage(code, message, destinationPresences, senderPresences, reliable);
+			},
+	
+			dispatchDeferred(code, message, destinationPlayerIds, senderId, reliable) {
+				let destinationPresences = (destinationPlayerIds && destinationPlayerIds.map(id => options.presences[id]!)) || undefined;
+				let senderPresences = (senderId && options.presences[senderId]) || undefined;
+				options.dispatcher.broadcastMessageDeferred(code, message, destinationPresences, senderPresences, reliable);
+			},
+	
+		};
+	}
 
 	// create wrapper class for accessing game storage (or database)
 	export function storageAccess(options: NakamaGameStorageAccessCreateOptions): GameStorageAccess {

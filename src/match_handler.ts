@@ -1,9 +1,9 @@
 import { Card, CardLocation, CardType } from "./model/cards";
 import { receivePlayerMessage } from "./communications/receiver";
-import { broadcastMatchState, broadcastMatchEvent, broadcastMatchEnd, broadcastUpdateAvailabeActions, sendRequestChoiceAction, sendResponseChoiceAction } from "./communications/sender";
+import { broadcastMatchState, broadcastMatchEvent, broadcastMatchEnd, broadcastUpdateAvailabeActions, sendRequestChoiceAction, sendResponseChoiceAction, broadcastGameStart, broadcastGameEnd, broadcastMatchSyncReady, broadcastMatchSyncTimer } from "./communications/sender";
 import { GameEventListener, GameEventType, createGameEventListener } from "./event_queue";
 import { EventReason, GameEvent, GameEventContext } from "./model/events";
-import { GameState, Match, getPlayerId } from "./match";
+import { EventQueue, GameState, Match, getPlayerId } from "./match";
 import { createNakamaIDGenerator, createNakamaMatchDispatcher, NakamaAdapter } from "./wrapper";
 import { GameConfiguration } from "./constants";
 import { Utility } from "./utility";
@@ -98,6 +98,7 @@ const matchJoin: nkruntime.MatchJoinFunction = function(ctx, logger, nk, dispatc
 const matchLeave: nkruntime.MatchLeaveFunction = function(ctx, logger, nk, dispatcher, tick, state, presences) {
 	let gameState: GameState = state.gameState;
 	let currentPresences: PlayerPresences = state.presences;
+	let matchDispatcher = NakamaAdapter.matchDispatcher({ nk, logger, dispatcher, presences: currentPresences })
 	logger.info(`Player ${presences.map(getPlayerId).join(", ")} left a match`);
 	presences.forEach(presence => {
 		let playerId = getPlayerId(presence);
@@ -105,6 +106,13 @@ const matchLeave: nkruntime.MatchLeaveFunction = function(ctx, logger, nk, dispa
 		currentPresences[playerId] = undefined;
 		//Match.removePresence(gameState, pId);
 	});
+
+	// remove match instantly if player leave while a room is initializing
+	if (gameState.status == "init" && Match.getActivePlayers(gameState).length < 2) {
+		broadcastMatchEnd(gameState, matchDispatcher)
+		return null;
+	}
+
 	return {
 		state: {
 			gameState,
@@ -177,14 +185,9 @@ const matchLoop: nkruntime.MatchLoopFunction = function(ctx, logger, nk, dispatc
 
 							let addedCards = handCards.concat(deckCards).concat(recipeDeckCards);
 							addedCards.forEach(card => Match.addCard(gameState, card));
-							//Match.updateCards(gameState, handCards.concat(deckCards).concat(recipeDeckCards), EventReason.INIT, "");
-
 							Match.moveCardToZone(gameState, initContext, handCards, gameState.players[id]!.hand, "top");
 							Match.moveCardToZone(gameState, initContext, deckCards, gameState.players[id]!.mainDeck, "top");
 							Match.moveCardToZone(gameState, initContext, recipeDeckCards, gameState.players[id]!.recipeDeck, "top");
-							//await Match.moveCard(gameState, id, handCards, CardLocation.HAND, id, 0, "top", EventReason.INIT);
-							//await Match.moveCard(gameState, id, deckCards, CardLocation.MAIN_DECK, id, 0, "top", EventReason.INIT);
-							//await Match.moveCard(gameState, id, recipeDeckCards, CardLocation.RECIPE_DECK, id, 0, "top", EventReason.INIT);
 						}
 						
 						for (let cardId in gameState.cards) {
@@ -198,12 +201,35 @@ const matchLoop: nkruntime.MatchLoopFunction = function(ctx, logger, nk, dispatc
 						broadcastMatchState(gameState, matchDispatcher);
 						//broadcastUpdateAvailabeActions(gameState, matchDispatcher);
 
-						await Match.beginTurn(gameState, initContext)
+						await Match.beginTurn(gameState, initContext);
 						
+						broadcastGameStart(gameState, matchDispatcher);
+
 					})();
 
+				Match.pause(gameState, {
+					reason: "sync_ready",
+					remainingPlayers: players.concat()
+				});
+				broadcastMatchSyncReady(gameState, matchDispatcher);
 			}
 			
+			break;
+
+		case "paused":
+
+			// read player messages
+			messages.forEach(msg => {
+				let senderId = getPlayerId(msg.sender);
+				let opCode = msg.opCode;
+				let dataStr = nk.binaryToString(msg.data);
+				receivePlayerMessage(gameState, senderId, opCode, dataStr, matchDispatcher, logger, gameStorageAccess);
+			});
+
+			if (gameState.pauseStatus === null) {
+				gameState.status = "running"
+			}
+
 			break;
 
 		case "running":	
@@ -220,64 +246,73 @@ const matchLoop: nkruntime.MatchLoopFunction = function(ctx, logger, nk, dispatc
 			}
 
 			// read player messages
-			// TODO: Restrict to one command every tick?
 			messages.forEach(msg => {
 				let senderId = getPlayerId(msg.sender);
 				let opCode = msg.opCode;
 				let dataStr = nk.binaryToString(msg.data);
 				receivePlayerMessage(gameState, senderId, opCode, dataStr, matchDispatcher, logger, gameStorageAccess);
 			});
-
-			if (gameState.activeRequest) {
-				if (gameState.activeRequest.response) {
-					logger.debug("send response choice action")
-					sendResponseChoiceAction(gameState, matchDispatcher, gameState.activeRequest.response);
-					gameState.activeRequest = null;
-				}
-				else if (!gameState.activeRequest.dispatched) {
-					logger.debug("send request choice action")
-					sendRequestChoiceAction(gameState, matchDispatcher, gameState.activeRequest.request);
-					gameState.activeRequest.dispatched = true;
-				}
-			}
 			
-			if (!gameState.activeRequest) {
-				// copy event queue from game state
-				let currentEventQueue = [ ...gameState.eventQueue ];
-				// clear current event queue for upcoming events
-				gameState.eventQueue.splice(0);
+			// copy event queue from game state
+			// events on held from previos paused will be processed later than the events happening after pause (from response, etc.)
+			let currentEventQueue: EventQueue = [ ...gameState.eventQueue, ...gameState.onHeldEventQueue ];
+			// clear current event queue for upcoming events
+			gameState.eventQueue.splice(0);
+			gameState.onHeldEventQueue.splice(0);
 
-				if (currentEventQueue.length > 0) {
-					// announce event
-					for (let entry of currentEventQueue) {
-						if (entry.event.canceled) {
-							entry.reject();
-						}
-						else {
-							entry.resolve();
-						}
-						gameState.resolvedEventQueue.push(entry);
+			if (currentEventQueue.length > 0) {
+
+				let resolvedTickEvent: EventQueue = []
+
+				// resolve event
+				for (let i = 0; i < currentEventQueue.length; i++) {
+					let entry = currentEventQueue[i];
+					// store remaining event to process later if the game is paused (on resolution by some previous event) until the game unpaused
+					if (Match.isPaused(gameState)) {
+						gameState.onHeldEventQueue.push(entry);
+						continue;
 					}
-					currentEventQueue = currentEventQueue.filter(e => !e.event.canceled);
-					for (let entry of currentEventQueue) {
-						broadcastMatchEvent(gameState, matchDispatcher, entry.event);
+					// skip canceled event
+					if (entry.event.canceled) {
+						entry.reject();
+						continue;
 					}
-				}
-				else if (gameState.resolvedEventQueue.length > 0) {
-					// update available action
-					broadcastUpdateAvailabeActions(gameState, matchDispatcher);
-					// trigger response
-					Match.makePlayersSelectResponseTriggerAbility(gameState, gameState.resolvedEventQueue.map(e => e.event), "after");
-					gameState.resolvedEventQueue.splice(0);
+					// resolve event
+					entry.resolve();
+					resolvedTickEvent.push(entry);
 				}
 				
+				for (let entry of resolvedTickEvent) {
+					// broadcast resolved event
+					broadcastMatchEvent(gameState, matchDispatcher, entry.event);
+					// push into another event queue to process post-resolution trigger response
+					gameState.resolvedEventQueue.push(entry);
+				}
+
+
 			}
+			// do post-resolution event processing
+			else if (gameState.resolvedEventQueue.length > 0) {
+				// update available action
+				broadcastUpdateAvailabeActions(gameState, matchDispatcher);
+				// trigger response
+				Match.makePlayersSelectResponseTriggerAbility(gameState, gameState.resolvedEventQueue.map(e => e.event), "after");
+				gameState.resolvedEventQueue.splice(0);
+				// pause until every player are ready
+				Match.pause(gameState, {
+					reason: "sync_ready",
+					remainingPlayers: players.concat()
+				});
+				broadcastMatchSyncReady(gameState, matchDispatcher);
+			}
+
+			broadcastMatchSyncTimer(gameState, matchDispatcher);
 
 			break;
 
 		case "ended":
 			//logger.debug(JSON.stringify(gameState.endResult))
-			broadcastMatchEnd(gameState, matchDispatcher);
+			broadcastGameEnd(gameState, matchDispatcher);
 			// grant play rewards
 			for (let playerId of players) {
 				let coinReward: number = 0;
@@ -288,7 +323,8 @@ const matchLoop: nkruntime.MatchLoopFunction = function(ctx, logger, nk, dispatc
 				}
 				gameStorageAccess.givePlayerCoin(playerId, coinReward);
 			}
-			//players.forEach(id => sendEventGameEnded(gameState, matchDispatcher, id));
+
+			broadcastMatchEnd(gameState, matchDispatcher);
 			return null;
 	}
 

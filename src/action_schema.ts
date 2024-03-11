@@ -15,7 +15,9 @@ export type PlayerActionParams =
 	PlayerActionParamsChooseCards |
 	PlayerActionParamsChooseZones |
 	PlayerActionParamsChooseYesNo |
-	PlayerActionParamsChooseOption
+	PlayerActionParamsChooseOption |
+	PlayerActionParamsSurrender |
+	PlayerActionParamsReady
 
 export type PlayerActionParamsEndTurn = {
 	type: "end_turn"
@@ -76,6 +78,15 @@ export type PlayerActionParamsChooseOption = {
 	choice: number
 }
 
+export type PlayerActionParamsSurrender = {
+	type: "surrender"
+}
+
+export type PlayerActionParamsReady = {
+	type: "ready",
+	ack_time: number
+}
+
 const playerActionSchema: {[type in ActionType]: z.ZodSchema<PlayerActionParams & { type: type }>} = {
 	end_turn: z.custom<PlayerActionParamsEndTurn>(),
 	go_to_strike_phase: z.custom<PlayerActionParamsToStrikePhase>(),
@@ -86,63 +97,22 @@ const playerActionSchema: {[type in ActionType]: z.ZodSchema<PlayerActionParams 
 	choose_cards: z.custom<PlayerActionParamsChooseCards>(),
 	choose_zones: z.custom<PlayerActionParamsChooseZones>(),
 	choose_yes_no: z.custom<PlayerActionParamsChooseYesNo>(),
-	choose_option: z.custom<PlayerActionParamsChooseOption>()
+	choose_option: z.custom<PlayerActionParamsChooseOption>(),
+	surrender: z.custom<PlayerActionParamsSurrender>(),
+	ready: z.custom<PlayerActionParamsReady>()
 }
 
 export function getPlayerActionSchemaByType<T extends ActionType>(type: T): z.ZodSchema<PlayerActionParams & { type: T }> {
 	return playerActionSchema[type];
 }
 
-export const actionSchemas = {
-	setIngredient: zod.object({
-		card: zod.string(),
-		column: zod.number().min(0).max(GameConfiguration.boardColumns - 1),
-		materials: zod.array(zod.string())
-	}),
-	
-	cookSummon: zod.object({
-		card: zod.string(),
-		column: zod.number().min(0).max(GameConfiguration.boardColumns - 1),
-		materials: zod.array(zod.string()),
-		quick_set: zod.boolean().optional()
-	}),
-
-	attack: zod.object({
-		attacking_card: zod.string(),
-		is_direct: zod.boolean(),
-		target_card: zod.string().optional()
-	}),
-
-	activateAction: zod.object({
-		card: zod.string()
-	}),
-
-	chooseCards: zod.object({
-		cards: zod.array(zod.string())
-	}),
-
-	chooseZones: zod.object({
-		zones: zod.array(zod.object({
-			location: zod.number().int().min(0),
-			column: zod.number().int().min(0)
-		}))
-	}),
-
-	chooseYesNo: zod.object({
-		choice: zod.boolean()
-	}),
-
-	chooseOption: zod.object({
-		choice: zod.number().int().min(0)
-	}),
-
-}
-
-export type SetIngredientActionParams = zod.output<typeof actionSchemas.setIngredient>
-export type CookSummonActionParams = zod.infer<typeof actionSchemas.cookSummon>
-export type AttackActionParams = zod.infer<typeof actionSchemas.attack>
-export type ActivateActionCardParams = zod.infer<typeof actionSchemas.activateAction>
-export type ChooseCardsParams = zod.infer<typeof actionSchemas.chooseCards>
-export type ChooseZonesParams = zod.infer<typeof actionSchemas.chooseZones>
-export type ChooseYesNoParams = zod.infer<typeof actionSchemas.chooseYesNo>
-export type ChooseOptionParams = zod.infer<typeof actionSchemas.chooseOption>
+export type SetIngredientActionParams = zod.output<typeof playerActionSchema.set_ingredient>
+export type CookSummonActionParams = zod.infer<typeof playerActionSchema.cook_summon>
+export type AttackActionParams = zod.infer<typeof playerActionSchema.attack>
+export type ActivateActionCardParams = zod.infer<typeof playerActionSchema.activate>
+export type ChooseCardsParams = zod.infer<typeof playerActionSchema.choose_cards>
+export type ChooseZonesParams = zod.infer<typeof playerActionSchema.choose_zones>
+export type ChooseYesNoParams = zod.infer<typeof playerActionSchema.choose_yes_no>
+export type ChooseOptionParams = zod.infer<typeof playerActionSchema.choose_option>
+export type SurrenderParams = zod.infer<typeof playerActionSchema.surrender>
+export type ReadyParams = zod.infer<typeof playerActionSchema.ready>

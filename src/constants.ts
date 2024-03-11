@@ -4,9 +4,9 @@ export const GameConfiguration = {
 	drawSizePerTurns: 5,
 	initialHP: 30,
 	initialHandSize: 4,
-	timeout: {
-		fixed: 30, // does not replenish
-		byTurn: 30 // replenish at beginning of player turn
+	playerTimer: {
+		turnTime: 60,
+		matchTime: 240
 	}
 }
 

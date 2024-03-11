@@ -3,7 +3,7 @@ import { GameStorageAccess } from "./wrapper";
 import { DishSummonProcedure } from "./cards/cook_summon_procedure";
 import { Recipe } from "./model/recipes";
 import { CardLocation, Card } from "./model/cards";
-import { ActionType, getPlayerActionSchemaByType, PlayerActionParams, PlayerActionParamsActivate, PlayerActionParamsChooseCards, PlayerActionParamsAttack, PlayerActionParamsCookSummon, PlayerActionParamsSetIngredient, PlayerActionParamsToStrikePhase, PlayerActionParamsEndTurn, PlayerActionParamsChooseZones, PlayerActionParamsChooseYesNo, PlayerActionParamsChooseOption } from "./action_schema";
+import { ActionType, getPlayerActionSchemaByType, PlayerActionParams, PlayerActionParamsActivate, PlayerActionParamsChooseCards, PlayerActionParamsAttack, PlayerActionParamsCookSummon, PlayerActionParamsSetIngredient, PlayerActionParamsToStrikePhase, PlayerActionParamsEndTurn, PlayerActionParamsChooseZones, PlayerActionParamsChooseYesNo, PlayerActionParamsChooseOption, ReadyParams, SurrenderParams } from "./action_schema";
 import { BUFF_ID_OVERGRADED, CardBuff, CardBuffResetCondition } from "./buff";
 import { EventReason } from "./model/events";
 
@@ -19,6 +19,7 @@ export type ActionHandlerResult = {
 }
 
 export interface ActionHandleContext {
+	logger: nkruntime.Logger,
 	storageAccess: GameStorageAccess,
 	gameState: GameState,
 	senderId: string
@@ -30,10 +31,20 @@ export type ActionHandleFunction<ParamType = any> = {
 	(context: ActionHandleContext, params: ParamType): ActionHandlerResult
 }
 
-// middleware to validate action available on open state
-function validateOpenState(next: ActionHandleFunction): ActionHandleFunction {
+// middleware to validate action available only when the game is running
+function validateStateRunning(next: ActionHandleFunction): ActionHandleFunction {
 	return (context, params) => {
-		if (context.gameState.activeRequest != null) {
+		if (context.gameState.status !== "running") {
+			return { success: false, data: { reason: "NOT_AVAILABLE" } };
+		}
+		return next(context, params);
+	}
+}
+
+// middleware to validate action available only when the game is paused
+function validateStatePaused(next: ActionHandleFunction): ActionHandleFunction {
+	return (context, params) => {
+		if (context.gameState.status !== "paused") {
 			return { success: false, data: { reason: "NOT_AVAILABLE" } };
 		}
 		return next(context, params);
@@ -317,7 +328,7 @@ const activateActionCardHandler: ActionHandleFunction<PlayerActionParamsActivate
 const chooseCardsHandler: ActionHandleFunction<PlayerActionParamsChooseCards> = (context, params) => {
 	let state = context.gameState;
 	let playerId = context.senderId;
-	let cardRequest = state.activeRequest?.request;
+	let cardRequest = Match.getPlayerActiveRequest(state, playerId);
 	if (!cardRequest || cardRequest.type !== "cards" || cardRequest.playerId !== playerId) {
 		return { success: false, data: { reason: "CHOICE_NOT_REQUESTED" }};
 	}
@@ -341,7 +352,7 @@ const chooseCardsHandler: ActionHandleFunction<PlayerActionParamsChooseCards> = 
 const chooseZonesHandler: ActionHandleFunction<PlayerActionParamsChooseZones> = (context, params) => {
 	let state = context.gameState;
 	let playerId = context.senderId;
-	let cardRequest = state.activeRequest?.request;
+	let cardRequest = Match.getPlayerActiveRequest(state, playerId);
 	if (!cardRequest || cardRequest.type !== "zones" || cardRequest.playerId !== playerId) {
 		return { success: false, data: { reason: "CHOICE_NOT_REQUESTED" }};
 	}
@@ -366,7 +377,7 @@ const chooseZonesHandler: ActionHandleFunction<PlayerActionParamsChooseZones> = 
 const chooseYesNoHandler: ActionHandleFunction<PlayerActionParamsChooseYesNo> = (context, params) => {
 	let state = context.gameState;
 	let playerId = context.senderId;
-	let cardRequest = state.activeRequest?.request;
+	let cardRequest = Match.getPlayerActiveRequest(state, playerId);
 	if (!cardRequest || cardRequest.type !== "yes_no" || cardRequest.playerId !== playerId) {
 		return { success: false, data: { reason: "CHOICE_NOT_REQUESTED" }};
 	}
@@ -379,7 +390,7 @@ const chooseYesNoHandler: ActionHandleFunction<PlayerActionParamsChooseYesNo> = 
 const chooseOptionHandler: ActionHandleFunction<PlayerActionParamsChooseOption> = (context, params) => {
 	let state = context.gameState;
 	let playerId = context.senderId;
-	let cardRequest = state.activeRequest?.request;
+	let cardRequest = Match.getPlayerActiveRequest(state, playerId);
 	if (!cardRequest || cardRequest.type !== "option" || cardRequest.playerId !== playerId) {
 		return { success: false, data: { reason: "CHOICE_NOT_REQUESTED" }};
 	}
@@ -389,30 +400,50 @@ const chooseOptionHandler: ActionHandleFunction<PlayerActionParamsChooseOption> 
 	return { success: true, data: {} };
 }
 
+const surrenderHandler: ActionHandleFunction<SurrenderParams> = (context, _) => {
+	Match.surrender(context.gameState, { reason: EventReason.UNSPECIFIED, player: context.senderId });
+	return { success: true, data: {} };
+}
+
+const readyHandler: ActionHandleFunction<ReadyParams> = (context, _) => {
+	if (context.gameState.pauseStatus && context.gameState.pauseStatus.reason == "sync_ready") {
+		context.gameState.pauseStatus.remainingPlayers = context.gameState.pauseStatus.remainingPlayers.filter(playerId => playerId !== context.senderId);
+		if (context.gameState.pauseStatus.remainingPlayers.length <= 0) {
+			context.gameState.pauseStatus = null;
+		}
+		return { success: true, data: {} };
+	}
+	return { success: true, data: { reason: "UNAVAILABLE" } };
+}
+
 export function getActionHandler(type: ActionType): ActionHandleFunction | null {
 	//let paramSchema = getPlayerActionSchemaByType(type);
 	//let handler: ActionHandleFunction | null = null;
 	switch (type) {
 		case "end_turn":
-			return validateOpenState(validateTurnPlayer(validateParams(type, endTurnActionHandler)));
+			return validateStateRunning(validateTurnPlayer(validateParams(type, endTurnActionHandler)));
 		case "go_to_strike_phase":
-			return validateOpenState(validatePhase("setup", validateTurnPlayer(validateParams(type, goToStrikePhaseActionHandler))));
+			return validateStateRunning(validatePhase("setup", validateTurnPlayer(validateParams(type, goToStrikePhaseActionHandler))));
 		case "set_ingredient":
-			return validateOpenState(validatePhase("setup", validateTurnPlayer(validateParams(type, setIngredientHandler))));
+			return validateStateRunning(validatePhase("setup", validateTurnPlayer(validateParams(type, setIngredientHandler))));
 		case "cook_summon":
-			return validateOpenState(validatePhase("setup", validateTurnPlayer(validateParams(type, dishSummonHandler))));
+			return validateStateRunning(validatePhase("setup", validateTurnPlayer(validateParams(type, dishSummonHandler))));
 		case "attack":
-			return validateOpenState(validatePhase("strike", validateTurnPlayer(validateParams(type, attackActionHandler))));
+			return validateStateRunning(validatePhase("strike", validateTurnPlayer(validateParams(type, attackActionHandler))));
 		case "activate":
-			return validateOpenState(validateTurnPlayer(validateParams(type, activateActionCardHandler)));
+			return validateStateRunning(validateTurnPlayer(validateParams(type, activateActionCardHandler)));
 		case "choose_cards":
-			return validateParams(type, chooseCardsHandler);
+			return validateStatePaused(validateParams(type, chooseCardsHandler));
 		case "choose_zones":
-			return validateParams(type, chooseZonesHandler);
+			return validateStatePaused(validateParams(type, chooseZonesHandler));
 		case "choose_yes_no":
-			return validateParams(type, chooseYesNoHandler);
+			return validateStatePaused(validateParams(type, chooseYesNoHandler));
 		case "choose_option":
-			return validateParams(type, chooseOptionHandler);
+			return validateStatePaused(validateParams(type, chooseOptionHandler));
+		case "surrender":
+			return validateParams(type, surrenderHandler);
+		case "ready":
+			return validateStatePaused(validateParams(type, readyHandler))
 		default:
 			return null
 	}

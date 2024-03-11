@@ -17,14 +17,14 @@ const TUMBLEWHEAT_EFFECT: CardEffect = {
 		// cost
 		Match.setSelectionHint(context.state, "Select a card to discard")
 		let discardOptions = Match.getCards(context.state, CardLocation.HAND, context.player);
-		let discardChoice = await Match.makePlayerSelectCards(context.state, context.player, discardOptions, 1, 1);
+		let discardChoice = await Match.makePlayerSelectCards(context.state, { player: context.player, reason: EventReason.EFFECT | EventReason.COST }, context.player, discardOptions, 1, 1);
 		await Match.discard(context.state, { player: context.player, reason: EventReason.EFFECT | EventReason.COST }, discardChoice.concat(context.card));
 
 		// set
 		Match.setSelectionHint(context.state, "Select a card to Set to the field")
 		let setOptions = Match.findCards(context.state, c => targetFilter(c, context.card), CardLocation.TRASH, context.player);
-		let setChoice = await Match.makePlayerSelectCards(context.state, context.player, setOptions, 1, 1);
-		let setZoneChoice = await Match.makePlayerSelectFreeZone(context.state, context.player, CardLocation.STANDBY_ZONE, context.player);
+		let setChoice = await Match.makePlayerSelectCards(context.state, { player: context.player, reason: EventReason.EFFECT }, context.player, setOptions, 1, 1);
+		let setZoneChoice = await Match.makePlayerSelectFreeZone(context.state, { player: context.player, reason: EventReason.EFFECT }, context.player, CardLocation.STANDBY_ZONE, context.player);
 		if (setZoneChoice) {
 			await Match.setToStandby(context.state, { player: context.player, reason: EventReason.EFFECT }, setChoice[0], context.player, setZoneChoice.column);
 		}

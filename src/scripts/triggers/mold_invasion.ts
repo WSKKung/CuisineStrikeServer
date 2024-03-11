@@ -14,7 +14,7 @@ const MOLD_INVASION_EFFECT: CardEffect = {
 	async activate({ state, player, card, event }) {
 		if (!event || event.type !== "set") return;
 		let discardOptions = Match.findCards(state, c => c.id !== card.id, CardLocation.HAND, player);
-		let discardChoice = await Match.makePlayerSelectCards(state, player, discardOptions, 1, 1);
+		let discardChoice = await Match.makePlayerSelectCards(state, { player: player, reason: EventReason.EFFECT | EventReason.COST }, player, discardOptions, 1, 1);
 		await Match.discard(state, { player: player, reason: EventReason.EFFECT | EventReason.COST }, discardChoice);
 
 		if (Card.getGrade(event.card) > 1) {
