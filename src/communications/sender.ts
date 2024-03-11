@@ -5,7 +5,6 @@ import { GameState, Match } from "../match"
 import { PlayerChoiceRequest, PlayerChoiceResponse } from "../model/player_request";
 import { MatchMessageDispatcher } from "../wrapper"
 import { MatchEventCode } from "./event_codes";
-import { ArrayUtil } from "../utility";
 
 type AvailableTurnActionPacket = {
 	actions: Array<AvailableCardActionPacket>
@@ -32,7 +31,7 @@ type AvailableCardActionPacket = {
 }
 
 type CardPacket = {
-	id: string,
+	id: CardID,
 	is_owned: boolean,
 	zone: ZonePacket,
 	sequence: number,
@@ -149,24 +148,27 @@ export function sendCurrentMatchState(state: GameState, dispatcher: MatchMessage
 	let opponent = Match.getOpponent(state, playerId);
 
 	let cards = Match.getCards(state, CardLocation.ANYWHERE);
+	//sendToPlayer(dispatcher, MatchEventCode.UPDATE_CARD, { cards: localizeCardData(cards, state, playerId), reason: EventReason.INIT }, playerId)
+	/*
 	let ownerCardGroup = ArrayUtil.group(cards, card => Card.getOwner(card));
 	for (let { key, items } of ownerCardGroup) {
 		let owner = key
 		let ownerGroupedCards = items
 		let locationCardGroup = ArrayUtil.group(ownerGroupedCards, card => Card.getLocation(card));
 		for (let { key, items } of locationCardGroup) {
-			let location = key
-			let locationGroupedCards = items
-			//state.log?.debug("send card init match state: location=" + location + " owner=" + owner)
+			let location = key;
+			let locationGroupedCards = items;
+			state.log?.debug("send card init match state: location=" + location + " owner=" + owner + " size=" + items.length);
 			let cardPacket = localizeCardData(locationGroupedCards, state, playerId);
 			sendToPlayer(dispatcher, MatchEventCode.UPDATE_CARD, { cards: cardPacket, reason: EventReason.INIT }, playerId);
 		}
 	}
+	*/
 
 	let event = {
 		turn_count: state.turnCount,
 		is_your_turn: Match.isPlayerTurn(state, playerId),
-		cards: [],//localizeCardData(Match.getCards(state, CardLocation.ANYWHERE), state, playerId),
+		cards: [],//localizeCardData(cards, state, playerId),
 		you: {
 			hp: Match.getHP(state, playerId)
 		},
@@ -180,6 +182,12 @@ export function sendCurrentMatchState(state: GameState, dispatcher: MatchMessage
 export function broadcastMatchState(state: GameState, dispatcher: MatchMessageDispatcher) {
 	Match.getActivePlayers(state).forEach(playerId => {
 		sendCurrentMatchState(state, dispatcher, playerId);
+	});
+}
+
+export function broadcastGameStart(state: GameState, dispatcher: MatchMessageDispatcher) {
+	Match.getActivePlayers(state).forEach(playerId => {
+		sendToPlayer(dispatcher, MatchEventCode.START_GAME, {}, playerId);
 	});
 }
 
@@ -344,6 +352,19 @@ export function broadcastMatchEnd(state: GameState, dispatcher: MatchMessageDisp
 			is_winner: isWinner,
 			reason: reasonString
 		}
+		sendToPlayer(dispatcher, MatchEventCode.END_MATCH, event, playerId)
+	});
+}
+
+
+export function broadcastGameEnd(state: GameState, dispatcher: MatchMessageDispatcher) {
+	Match.getActivePlayers(state).forEach(playerId => {
+		let isWinner = Match.isWinner(state, playerId);
+		let reasonString = `${(isWinner ? "win" : "lose")}.${Match.getEndReason(state)}`
+		let event = {
+			is_winner: isWinner,
+			reason: reasonString
+		}
 		sendToPlayer(dispatcher, MatchEventCode.END_GAME, event, playerId)
 	});
 }
@@ -455,12 +476,41 @@ export function sendResponseChoiceAction(state: GameState, dispatcher: MatchMess
 	}
 }
 
+export function broadcastMatchSyncReady(state: GameState, dispatcher: MatchMessageDispatcher) {
+	if (state.pauseStatus && state.pauseStatus.reason === "sync_ready") {
+		state.pauseStatus.remainingPlayers.forEach(playerId => {
+			sendToPlayer(dispatcher, MatchEventCode.SYNC_READY, {}, playerId);
+		});
+	}
+}
+
+export function broadcastMatchSyncTimer(state: GameState, dispatcher: MatchMessageDispatcher) {
+	let syncBeginTime = Date.now()
+	Match.getActivePlayers(state).forEach(playerId => {
+		let playerTimer = state.players[playerId]!.timer
+		let opponentTimer = state.players[Match.getOpponent(state, playerId)]!.timer
+		let packet = {
+			you: {
+				turn_time: playerTimer.remainingTurnTime,
+				match_time: playerTimer.remainingMatchTime
+			},
+			opponent: {
+				turn_time: opponentTimer.remainingTurnTime,
+				match_time: opponentTimer.remainingMatchTime
+			},
+			paused: state.status !== "running",
+			sync_begin_time: syncBeginTime
+		}
+		sendToPlayer(dispatcher, MatchEventCode.SYNC_TIMER, packet, playerId)
+	})
+}
+
 export function broadcastUpdateAvailabeActions(state: GameState, dispatcher: MatchMessageDispatcher) {
 	Match.getActivePlayers(state).forEach(playerId => {
 		let actionMap: { [card: CardID]: AvailableCardActionPacket } = {};
 		if (Match.isPlayerTurn(state, playerId)) {
 			// set
-			let potentialSettableCards = Match.findCards(state, (card) =>  Match.isCardCanSetAsIngredient(state, card), CardLocation.HAND, playerId);
+			let potentialSettableCards = Match.findCards(state, (card) =>  Match.isCardCanSetAsIngredient(state, card), CardLocation.HAND | CardLocation.SERVE_ZONE, playerId);
 			for (let card of potentialSettableCards) {
 				let requiredCost = Card.getIngredientMinimumMaterialCost(card);
 				if (requiredCost >= 0) {
@@ -516,4 +566,12 @@ export function broadcastUpdateAvailabeActions(state: GameState, dispatcher: Mat
 		//state.log?.debug(JSON.stringify(actionMap));
 		sendToPlayer(dispatcher, MatchEventCode.UPDATE_AVAILABLE_ACTIONS, packet, playerId)
 	});
+}
+
+export function broadcastMatchTimer(state: GameState, dispatcher: MatchMessageDispatcher) {
+	if (state.pauseStatus && state.pauseStatus.reason === "sync_ready") {
+		state.pauseStatus.remainingPlayers.forEach(playerId => {
+			sendToPlayer(dispatcher, MatchEventCode.SYNC_READY, {}, playerId);
+		});
+	}
 }
