@@ -135,83 +135,97 @@ const matchLoop: nkruntime.MatchLoopFunction = function(ctx, logger, nk, dispatc
 	switch (gameState.status) {
 		case "init":
 			// wait until all players join the game
-			if (players.length >= 2) {
-					// initialize gamestate
-					gameState.status = "running";
-					gameState.turnPlayer = Match.getRandomPlayer(gameState)
-					gameState.turnCount = 1;
-				
-					// register effect scripts
-					registerCardEffectScripts();
+		if (players.length >= 2) {
+				// initialize gamestate
+				gameState.status = "running";
+				gameState.turnPlayer = Match.getRandomPlayer(gameState)
+				gameState.turnCount = 1;
+			
+				// register effect scripts
+				registerCardEffectScripts();
 
-					(async() => {
-						
-						let initContext: GameEventContext = { player: null, reason: EventReason.INIT };
-						// initialize deck
-						for (let id of players) {
-							// main deck
-							// TODO: Use player's selected deck from database instead
-							let deckCards: Array<Card> = [];
-							let handCards: Array<Card> = [];
-							let deck: Deck = gameStorageAccess.readPlayerActiveDeck(id);
-							try {
-								deckCards = deck.main.map(entry => {
-									let cardId = idGen.uuid();
-									let cardProps = gameStorageAccess.readCardProperty(entry.code);
-									return Card.create(cardId, entry.code, id, cardProps)
-								});
+				broadcastGameStart(gameState, matchDispatcher);
 
-								// shuffle
-								Utility.shuffle(deckCards);
+				(async() => {
+					
+					let initContext: GameEventContext = { player: null, reason: EventReason.INIT };
+					// initialize deck
+					for (let id of players) {
+						// main deck
+						// TODO: Use player's selected deck from database instead
+						let deckCards: Array<Card> = [];
+						let handCards: Array<Card> = [];
+						let deck: Deck = gameStorageAccess.readPlayerActiveDeck(id);
+						try {
+							deckCards = deck.main.map(entry => {
+								let cardId = idGen.uuid();
+								let cardProps = gameStorageAccess.readCardProperty(entry.code);
+								return Card.create(cardId, entry.code, id, cardProps)
+							});
 
-								handCards = deckCards.splice(0, GameConfiguration.initialHandSize);
-							} catch (error: any) {
-								logger.error(`Main deck initialization for player %s failed: %s`, id, error.message);
-							}
+							// shuffle
+							Utility.shuffle(deckCards);
 
-							// recipe deck
-							// TODO: Use player's selected deck from database instead
-							let recipeDeckCards: Array<Card> = [];
-							try {
-								recipeDeckCards = deck.recipe.map(entry => {
-									let cardId = idGen.uuid();
-									let cardProps = gameStorageAccess.readCardProperty(entry.code);
-									return Card.create(cardId, entry.code, id, cardProps)
-								});
-								recipeDeckCards.forEach(card => Match.addCard(gameState, card));
-							} catch (error: any) {
-								logger.error(`Recipe deck initialization for player %s failed: %s`, id, error.message);
-							}
-
-							let addedCards = handCards.concat(deckCards).concat(recipeDeckCards);
-							addedCards.forEach(card => Match.addCard(gameState, card));
-							Match.moveCardToZone(gameState, initContext, handCards, gameState.players[id]!.hand, "top");
-							Match.moveCardToZone(gameState, initContext, deckCards, gameState.players[id]!.mainDeck, "top");
-							Match.moveCardToZone(gameState, initContext, recipeDeckCards, gameState.players[id]!.recipeDeck, "top");
-						}
-						
-						for (let cardId in gameState.cards) {
-							let card: Card = gameState.cards[cardId];
-							let effects = CardEffectProvider.getEffects(Card.getCode(card));
-							for (let effect of effects) {
-								Match.registerEffect(gameState, card, effect);
-							}
+							handCards = deckCards.splice(0, GameConfiguration.initialHandSize);
+						} catch (error: any) {
+							logger.error(`Main deck initialization for player %s failed: %s`, id, error.message);
 						}
 
-						broadcastMatchState(gameState, matchDispatcher);
-						//broadcastUpdateAvailabeActions(gameState, matchDispatcher);
+						// recipe deck
+						// TODO: Use player's selected deck from database instead
+						let recipeDeckCards: Array<Card> = [];
+						try {
+							recipeDeckCards = deck.recipe.map(entry => {
+								let cardId = idGen.uuid();
+								let cardProps = gameStorageAccess.readCardProperty(entry.code);
+								return Card.create(cardId, entry.code, id, cardProps)
+							});
+							recipeDeckCards.forEach(card => Match.addCard(gameState, card));
+						} catch (error: any) {
+							logger.error(`Recipe deck initialization for player %s failed: %s`, id, error.message);
+						}
 
-						await Match.beginTurn(gameState, initContext);
-						
-						broadcastGameStart(gameState, matchDispatcher);
+						let addedCards = handCards.concat(deckCards).concat(recipeDeckCards);
+						addedCards.forEach(card => Match.addCard(gameState, card));
+						Match.moveCardToZone(gameState, initContext, handCards, gameState.players[id]!.hand, "top");
+						Match.moveCardToZone(gameState, initContext, deckCards, gameState.players[id]!.mainDeck, "top");
+						Match.moveCardToZone(gameState, initContext, recipeDeckCards, gameState.players[id]!.recipeDeck, "top");
+					}
+					
+					for (let cardId in gameState.cards) {
+						let card: Card = gameState.cards[cardId];
 
-					})();
+						// register recipe
+						let cardCode = Card.getCode(card);
+						if (gameState.recipe[cardCode] === undefined) {
+							if (Card.hasType(card, CardType.DISH)) {
+								gameState.recipe[cardCode] = gameStorageAccess.readDishCardRecipe(cardCode);
+							} else {
+								gameState.recipe[cardCode] = null;
+							}
+						}
 
-				Match.pause(gameState, {
-					reason: "sync_ready",
-					remainingPlayers: players.concat()
-				});
-				broadcastMatchSyncReady(gameState, matchDispatcher);
+						// register effect
+						let effects = CardEffectProvider.getEffects(Card.getCode(card));
+						for (let effect of effects) {
+							Match.registerEffect(gameState, card, effect);
+						}
+					}
+
+					//logger.debug("async init broadcast match state beginning")
+
+					broadcastMatchState(gameState, matchDispatcher);
+					//broadcastUpdateAvailabeActions(gameState, matchDispatcher);
+
+					await Match.beginTurn(gameState, initContext);
+					
+				})();
+
+				// Match.pause(gameState, {
+				// 	reason: "sync_ready",
+				// 	remainingPlayers: players.concat()
+				// });
+				// broadcastMatchSyncReady(gameState, matchDispatcher);
 			}
 			
 			break;
@@ -227,7 +241,7 @@ const matchLoop: nkruntime.MatchLoopFunction = function(ctx, logger, nk, dispatc
 			});
 
 			if (gameState.pauseStatus === null) {
-				gameState.status = "running"
+				gameState.status = "running";
 			}
 
 			break;
@@ -261,9 +275,7 @@ const matchLoop: nkruntime.MatchLoopFunction = function(ctx, logger, nk, dispatc
 			gameState.onHeldEventQueue.splice(0);
 
 			if (currentEventQueue.length > 0) {
-
 				let resolvedTickEvent: EventQueue = []
-
 				// resolve event
 				for (let i = 0; i < currentEventQueue.length; i++) {
 					let entry = currentEventQueue[i];
@@ -289,7 +301,10 @@ const matchLoop: nkruntime.MatchLoopFunction = function(ctx, logger, nk, dispatc
 					gameState.resolvedEventQueue.push(entry);
 				}
 
-
+				// pause timer while resolving action (if any)
+				if (resolvedTickEvent.length > 0) {
+					Match.pauseAllPlayersTimer(gameState);
+				}
 			}
 			// do post-resolution event processing
 			else if (gameState.resolvedEventQueue.length > 0) {
@@ -305,8 +320,10 @@ const matchLoop: nkruntime.MatchLoopFunction = function(ctx, logger, nk, dispatc
 				});
 				broadcastMatchSyncReady(gameState, matchDispatcher);
 			}
-
-			broadcastMatchSyncTimer(gameState, matchDispatcher);
+			// no event to process
+			else {
+				Match.resumePlayerTimer(gameState, Match.getTurnPlayer(gameState));
+			}
 
 			break;
 
@@ -326,6 +343,15 @@ const matchLoop: nkruntime.MatchLoopFunction = function(ctx, logger, nk, dispatc
 
 			broadcastMatchEnd(gameState, matchDispatcher);
 			return null;
+	}
+
+	if (gameState.status == "paused" || gameState.status == "running") {
+		// update timer: delta time in millisecond unit
+		let deltaTime: number = 1000 / GameConfiguration.tickRate;
+		for (let player of players) {
+			Match.countdownPlayerTimer(gameState, player, deltaTime);
+		}
+		broadcastMatchSyncTimer(gameState, matchDispatcher);
 	}
 
 	return {

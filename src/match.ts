@@ -8,6 +8,7 @@ import { BUFF_ID_DAMAGED, CardBuff, CardBuffResetCondition as CardBuffResetFlag 
 import { CardEffect, CardEffectContext, CardEffectInstance, CardEffectUseLimit } from "./model/effect";
 import { PlayerChoiceRequest, PlayerChoiceRequestCards, PlayerChoiceResponse, PlayerChoiceResponseCards, PlayerChoiceResponseValue, PlayerChoiceType } from "./model/player_request";
 import { EndResultStringKeys } from "./communications/string_keys";
+import { Recipe } from "./model/recipes";
 
 export interface GameResult {
 	winners: Array<string>,
@@ -24,9 +25,10 @@ export type EventQueue = Array<{
 export type GamePauseStatus = GamePauseStatusDisconnected |
 	GamePauseStatusPlayerRequest |
 	GamePauseStatusSyncReady
+
 export interface GamePauseStatusDisconnected {
 	reason: "disconnected",
-	timeout: TimerHandler
+	timeout: number
 }
 
 export interface GamePauseStatusPlayerRequest {
@@ -65,6 +67,7 @@ export interface GameState extends nkruntime.MatchState {
 	} | null,
 	nextHintMessage?: string,
 	pauseStatus: GamePauseStatus | null
+	recipe: {[code: number]: Recipe | null}
 }
 
 export interface PlayerData {
@@ -83,8 +86,8 @@ export interface PlayerData {
 }
 
 export interface PlayerTimer {
-	remainingTurnTime: number,
-	remainingMatchTime: number,
+	turnTime: number,
+	matchTime: number,
 	paused: boolean
 }
 
@@ -113,9 +116,9 @@ export namespace Match {
 			prevHp: GameConfiguration.initialHP,
 			online: false,
 			timer: {
-				remainingMatchTime: GameConfiguration.playerTimer.matchTime,
-				remainingTurnTime: GameConfiguration.playerTimer.turnTime,
-				paused: false
+				matchTime: GameConfiguration.playerTimer.matchTime,
+				turnTime: GameConfiguration.playerTimer.turnTime,
+				paused: true
 			},
 			hand, mainDeck, recipeDeck, trash, serveZones, standbyZone
 		};
@@ -136,7 +139,8 @@ export namespace Match {
 			resolvedEventQueue: [],
 			onHeldEventQueue: [],
 			attackCount: {},
-			pauseStatus: null
+			pauseStatus: null,
+			recipe: {}
 		};
 	}
 
@@ -802,6 +806,7 @@ export namespace Match {
 			turnPlayer: getTurnPlayer(state)
 		});
 
+		pausePlayerTimer(state, event.turnPlayer);
 		removeBuffs(state, event.context, getCards(state, CardLocation.ON_FIELD), (buff) => BitField.any(buff.resets, CardBuffResetFlag.END_TURN));
 		for (let cardId in state.effects) {
 			for (let effect of state.effects[cardId]) {
@@ -819,9 +824,11 @@ export namespace Match {
 		});
 
 		let turnPlayer = event.turnPlayer;
+		passPlayerTimer(state, turnPlayer);
 
 		// reset player turn timer
-		state.players[turnPlayer]!.timer.remainingTurnTime = GameConfiguration.playerTimer.turnTime;
+		replenishPlayerTimerTurnTime(state, turnPlayer);
+
 		//let maxTimeout = GameConfiguration.timeout.fixed + GameConfiguration.timeout.byTurn
 		//state.players[turnPlayer]!.timeout = Math.min(maxTimeout, (state.players[turnPlayer]!.timeout - GameConfiguration.timeout.fixed) + GameConfiguration.timeout.byTurn);
 
@@ -1077,6 +1084,8 @@ export namespace Match {
 			request: request
 		});
 
+		passPlayerTimer(state, request.playerId);
+
 		pause(state, {
 			reason: "player_request",
 			request: request,
@@ -1088,6 +1097,8 @@ export namespace Match {
 
 	export function dispatchPlayerResponse(state: GameState, playerId: string, response: PlayerChoiceResponse): void {
 		if (state.pauseStatus && state.pauseStatus.reason === "player_request" && state.pauseStatus.request.playerId === playerId && state.pauseStatus.request.type === response.type) {
+			pausePlayerTimer(state, state.pauseStatus.request.playerId);
+			
 			pushEvent(state, {
 				id: newUUID(state),
 				type: "confirm_choice",
@@ -1095,8 +1106,9 @@ export namespace Match {
 				response: response
 			});
 
+
 			state.pauseStatus = null
-			state.log?.debug("dispatch response " + JSON.stringify(state))
+			//state.log?.debug("dispatch response " + JSON.stringify(state))
 		}
 	}
 
@@ -1308,12 +1320,67 @@ export namespace Match {
 		}
 	}
 
+	export function getRecipe(state: GameState, card: Card): Recipe | null {
+		return state.recipe[card.baseProperties.code];
+	}
+
 	export function updatePlayerAvailableActions(state: GameState): void {
 
 	}
 
-}
 
-function callback(chosenCards: Card[]): void {
-	throw new Error("Function not implemented.");
+	export function pausePlayerTimer(state: GameState, playerId: string): void {
+		state.players[playerId]!.timer.paused = true;
+	}
+
+	export function resumePlayerTimer(state: GameState, playerId: string): void {
+		state.players[playerId]!.timer.paused = false;
+	}
+
+	export function pauseAllPlayersTimer(state: GameState): void {
+		for (let playerId of getActivePlayers(state)) {
+			state.players[playerId]!.timer.paused = true;
+		}
+	}
+
+	export function passPlayerTimer(state: GameState, playerId: string): void {
+		pauseAllPlayersTimer(state);
+		resumePlayerTimer(state, playerId);
+	}
+
+	export function replenishPlayerTimerTurnTime(state: GameState, playerId: string): void {
+		state.players[playerId]!.timer.turnTime = GameConfiguration.playerTimer.turnTime;
+	}
+
+	export function countdownPlayerTimer(state: GameState, playerId: string, deltaMilliseconds: number): void {
+		let timer = state.players[playerId]!.timer;
+		// do not countdown on paused timer
+		if (timer.paused) {
+			return;
+		}
+		// count down turn time first
+		if (timer.turnTime > 0) {
+			timer.turnTime -= deltaMilliseconds;
+			// turn time reaches zero, then cascade count down onto the match time
+			if (timer.turnTime < 0) {	
+				timer.matchTime += timer.turnTime;
+				timer.turnTime = 0;
+			}
+		}
+		// then count down match time if turn time runs out
+		else if (timer.matchTime > 0) {
+			timer.matchTime -= deltaMilliseconds;
+		}
+
+		// player lose if timer of both turn time and match time runs out
+		if (timer.turnTime <= 0 && timer.matchTime <= 0) {
+			Match.makePlayerLose(state, playerId, EndResultStringKeys.TIMEOUT);
+		}
+
+	}
+
+	export function isPlayerTimerTimeout(state: GameState, playerId: string): boolean {
+		let timer = state.players[playerId]!.timer;
+		return !timer.paused && timer.turnTime <= 0 && timer.matchTime <= 0;
+	}
 }
