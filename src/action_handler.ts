@@ -208,7 +208,7 @@ const dishSummonHandler: ActionHandleFunction<PlayerActionParamsCookSummon> = (c
 	}
 
 	// load card recipe
-	let recipe: Recipe | null = context.storageAccess.readDishCardRecipe(Card.getCode(cardToSummon));
+	let recipe: Recipe | null = Match.getRecipe(context.gameState, cardToSummon);
 	if (!recipe) {
 		return { success: false, data: { reason: "TARGET_CARD_MISSING_RECIPE" } }
 	}

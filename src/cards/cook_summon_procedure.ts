@@ -3,6 +3,81 @@ import { EMPTY_RECIPE, Recipe, RecipeSchemas, RecipeSlotFilter } from "../model/
 
 export namespace DishSummonProcedure {
 
+	// thanks to ChatGPT for this algo's idea, without it I would go commit aliven't by now
+	/** Check if recipe is completed recursively.
+	 * @param recipe A recipe to check
+	 * @param card A card that own the checking recipe 
+	 * @param materials Array of cards to check as materials against the recipe
+	 * @param materialsIndex Index of iterating materials
+	 * @param materialsIndex Array of cards assigned to recipe slot correspond to the index of their subarray in current iteration (for example, usedMaterialPerSlots[n] represents every card currently assigned for nth sloth in the recipe.)
+	 */ 
+	function backtrackCheckRecipeMaterialsExact(recipe: Recipe, card: Card, materials: Array<Card>, materialIndex: number, usedMaterialPerSlots: Array<Array<Card>>): boolean {
+		// all materials are assigned to recipe slot
+		if (materialIndex === materials.length) {
+			
+			// check minimum material count for each slot
+			for (let slotIndex = 0; slotIndex < recipe.slots.length; slotIndex++) {
+				let slot = recipe.slots[slotIndex];
+				let slotMaterials = usedMaterialPerSlots[slotIndex];
+				// failed, current slot have no enough material
+				if (slotMaterials.length < slot.min) {
+					return false;
+				}
+			}
+
+			// success, all materials assigned to some slots and all slots fulfill its material requirement
+			return true;
+		}
+
+		let currentMaterial = materials[materialIndex];
+
+		// Iterate through every slots in the recipe
+		for (let slotIndex = 0; slotIndex < recipe.slots.length; slotIndex++) {
+			let slot = recipe.slots[slotIndex];
+			let slotMaterials = usedMaterialPerSlots[slotIndex];
+
+			// skip slot that is already full
+			if (slotMaterials.length >= slot.max) {
+				continue;
+			}
+
+			// skip current slot if the current material is not compatible with
+			if (!checkMaterialMatchingFilter(slot.condition, card, currentMaterial)) {
+				continue;
+			}
+
+			// assign current material to current slot
+			slotMaterials.push(currentMaterial);
+
+			// check recursively with other slot with the next material
+			let nextResult = backtrackCheckRecipeMaterialsExact(recipe, card, materials, materialIndex + 1, usedMaterialPerSlots);
+			if (nextResult) {
+				// only pass success result back
+				// for failed result will be backtracked to the next material
+				return nextResult;
+			}
+
+			// unmarks to backtrack to check next material
+			slotMaterials.pop();
+
+		}
+
+		// failed, current material cannot be assigned to any slot
+		return false;
+	}
+
+	/**
+	 * Check if given material combinations fulfill the recipe of the given card.
+	 * Note that to pass the test, EVERY materials must be used.
+	 * @param recipe A recipe to check
+	 * @param card A card that own the checking recipe 
+	 * @param materials Array of cards to check as materials against the recipe
+	 * @returns 
+	 */
+	export function checkIsRecipeComplete(recipe: Recipe, card: Card, materials: Array<Card>): boolean {
+		return backtrackCheckRecipeMaterialsExact(recipe, card, materials, 0, recipe.slots.map<Array<Card>>(_ => []));
+	}
+
 	export function loadRecipeFromCardCode(code: number, nk: nkruntime.Nakama): Recipe | null {
 		// load from cache
 		let recipeCache = nk.localcacheGet("recipes") || {};
@@ -25,118 +100,6 @@ export namespace DishSummonProcedure {
 		return recipeData;
 	}
 
-	export function checkIsRecipeComplete(recipe: Recipe, card: Card, materials: Array<Card>): boolean {
-		let slots = recipe.slots;
-		// empty recipe is equivalent to no recipe
-		if (slots.length <= 0) {
-			return false;
-		}
-
-		// thanks to ChatGPT for this algo's idea, without it I would go commit aliven't by now
-		function backtrackCheck(materialIndex: number, usedMaterialPerSlots: Array<Array<Card>>): boolean {
-			// all materials are assigned to recipe slot
-			if (materialIndex === materials.length) {
-				
-				// check minimum material count for each slot
-				for (let slotIndex = 0; slotIndex < slots.length; slotIndex++) {
-					let slot = slots[slotIndex];
-					let slotMaterials = usedMaterialPerSlots[slotIndex];
-					// failed, current slot have no enough material
-					if (slotMaterials.length < slot.min) {
-						return false;
-					}
-				}
-
-				// success, all materials assigned to some slots and all slots fulfill its material requirement
-				return true;
-			}
-
-			let currentMaterial = materials[materialIndex];
-
-			for (let slotIndex = 0; slotIndex < slots.length; slotIndex++) {
-				let slot = slots[slotIndex];
-				let slotMaterials = usedMaterialPerSlots[slotIndex];
-
-				// skip slot that is already full
-				if (slotMaterials.length >= slot.max) {
-					continue;
-				}
-
-				// skip incompatible slot
-				if (!checkMaterialMatchingFilter(slot.condition, card, currentMaterial)) {
-					continue;
-				}
-
-				// marks current materials as used with current slot
-				slotMaterials.push(currentMaterial);
-
-				// go to next materials with the updated used materials
-				let nextResult = backtrackCheck(materialIndex + 1, usedMaterialPerSlots);
-				if (nextResult) {
-					// only pass success result back
-					// for failed result will be backtracked to the next material
-					return nextResult;
-				}
-
-				// unmarks to backtrack to check next material
-				slotMaterials.pop();
-
-			}
-
-			// failed, current material cannot be assigned to any slot
-			return false;
-		}
-
-		return backtrackCheck(0, slots.map<Array<Card>>(_ => []));
-	/*
-		function backtrackCheckMinimumRecipeRequired(slotNumber: number, usedMaterialPerSlots: Array<Array<Card>>): [ boolean, Array<Card> ] {
-			// Recipe is completed, the minimum material needed to fill the recipe exists with combination of current used materials
-			if (slotNumber === slots.length) {
-				return [ true, usedMaterialPerSlots.reduce((prev, next) => prev.concat(next), []) ];
-			}
-
-			let slot = slots[slotNumber];
-
-			for (let material of materials) {
-				// skip used materials
-				if (usedMaterialPerSlots.some(usedMaterials => usedMaterials.some(usedCard => material.id === usedCard.id))) {
-					continue;
-				}
-				
-				// skip material that does not match the slot
-				if (!checkMaterialMatchingFilter(slot.condition, card, material)) {
-					continue;
-				}
-
-				// marks the current materials as used
-				usedMaterialPerSlots[slotNumber].push(material);
-
-				// If the slot's minimum requirement is fulfilled, then move to the next slot, otherwise still on the same slot
-				let nextSlot = usedMaterialPerSlots[slotNumber].length === slot.min ? slotNumber + 1 : slotNumber;
-				let nextResult = backtrackCheckMinimumRecipeRequired(nextSlot, usedMaterialPerSlots);
-				// and immediately return the result if recipe is completed
-				if (nextResult[0]) {
-					return nextResult;
-				}
-
-				// remove the current materials to backtrack
-				usedMaterialPerSlots[slotNumber].pop();
-			}
-
-			return [ false, [] ];
-		}
-
-		
-		let [ passedMinimum, minimumMaterials ] = backtrackCheckMinimumRecipeRequired(0, slots.map<Array<Card>>(_ => []));
-		if (!passedMinimum) {
-			return false;
-		}
-
-		// find remaining slot for each of remaining material
-
-		return true;
-		*/
-	}
 
 	function checkMaterialMatchingFilter(filter: RecipeSlotFilter, card: Card, material: Card): boolean {
 		switch (filter.type) {
@@ -170,5 +133,71 @@ export namespace DishSummonProcedure {
 			default:
 				return false;
 		}
+	}
+	
+	/** Check if recipe is completed recursively.
+	 * @param recipe A recipe to check
+	 * @param card A card that own the checking recipe 
+	 * @param materials Array of cards to check as materials against the recipe
+	 * @param materialsIndex Index of iterating materials
+	 * @param materialsIndex Array of cards assigned to recipe slot correspond to the index of their subarray in current iteration (for example, usedMaterialPerSlots[n] represents every card currently assigned for nth sloth in the recipe.)
+	 * @params combinations Array of combinations of materials that can be used to complete the recipe
+	*/ 
+	function backtrackGetRecipeCombinations(recipe: Recipe, card: Card, materials: Array<Card>, materialIndex: number, usedMaterialPerSlots: Array<Array<Card>>, combinations: Array<Array<Card>>): void {
+		// all materials are assigned to recipe slot
+		if (materialIndex === materials.length) {
+			
+			// check minimum material count for each slot
+			for (let slotIndex = 0; slotIndex < recipe.slots.length; slotIndex++) {
+				let slot = recipe.slots[slotIndex];
+				let slotMaterials = usedMaterialPerSlots[slotIndex];
+				// failed, current slot have no enough material
+				if (slotMaterials.length < slot.min) {
+					return;
+				}
+			}
+
+			// success, all materials assigned to some slots and all slots fulfill its material requirement
+			let foundCombination = usedMaterialPerSlots.reduce((a, b) => a.concat(b), []);
+			if (foundCombination.length > 0) {
+				combinations.push(foundCombination);
+			}
+			return;
+		}
+
+		let currentMaterial = materials[materialIndex];
+
+		// Iterate through every slots in the recipe
+		for (let slotIndex = 0; slotIndex < recipe.slots.length; slotIndex++) {
+			let slot = recipe.slots[slotIndex];
+			let slotMaterials = usedMaterialPerSlots[slotIndex];
+
+			// skip slot that is already full
+			if (slotMaterials.length >= slot.max) {
+				continue;
+			}
+
+			// skip current slot if the current material is not compatible with
+			if (!checkMaterialMatchingFilter(slot.condition, card, currentMaterial)) {
+				continue;
+			}
+
+			// assign current material to current slot
+			slotMaterials.push(currentMaterial);
+
+			// check recursively with other slot with the next material
+			backtrackGetRecipeCombinations(recipe, card, materials, materialIndex + 1, usedMaterialPerSlots, combinations);
+
+			// unmarks to backtrack to check next material
+			slotMaterials.pop();
+
+		}
+	}
+
+	export function getRecipeValidCombinations(recipe: Recipe, card: Card, materials: Array<Card>): Array<Array<Card>> {
+		let combinations: Array<Array<Card>> = [];
+		backtrackGetRecipeCombinations(recipe, card, materials, 0, recipe.slots.map(_ => []), combinations);
+		combinations = combinations.filter(combination => combination.map(Card.getGrade).reduce((g1,g2) => g1 + g2, 0) >= Card.getBaseGrade(card) )
+		return combinations;
 	}
 }

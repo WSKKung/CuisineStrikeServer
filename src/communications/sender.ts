@@ -5,6 +5,7 @@ import { GameState, Match } from "../match"
 import { PlayerChoiceRequest, PlayerChoiceResponse } from "../model/player_request";
 import { MatchMessageDispatcher } from "../wrapper"
 import { MatchEventCode } from "./event_codes";
+import { DishSummonProcedure } from "../cards/cook_summon_procedure";
 
 type AvailableTurnActionPacket = {
 	actions: Array<AvailableCardActionPacket>
@@ -182,6 +183,11 @@ export function sendCurrentMatchState(state: GameState, dispatcher: MatchMessage
 export function broadcastMatchState(state: GameState, dispatcher: MatchMessageDispatcher) {
 	Match.getActivePlayers(state).forEach(playerId => {
 		sendCurrentMatchState(state, dispatcher, playerId);
+	});
+}
+export function broadcastGameInitialized(state: GameState, dispatcher: MatchMessageDispatcher) {
+	Match.getActivePlayers(state).forEach(playerId => {
+		sendToPlayer(dispatcher, MatchEventCode.INIT_GAME, {}, playerId);
 	});
 }
 
@@ -491,14 +497,16 @@ export function broadcastMatchSyncTimer(state: GameState, dispatcher: MatchMessa
 		let opponentTimer = state.players[Match.getOpponent(state, playerId)]!.timer
 		let packet = {
 			you: {
-				turn_time: playerTimer.remainingTurnTime,
-				match_time: playerTimer.remainingMatchTime
+				turn_time: playerTimer.turnTime,
+				match_time: playerTimer.matchTime,
+				paused: playerTimer.paused
 			},
 			opponent: {
-				turn_time: opponentTimer.remainingTurnTime,
-				match_time: opponentTimer.remainingMatchTime
+				turn_time: opponentTimer.turnTime,
+				match_time: opponentTimer.matchTime,
+				paused: opponentTimer.paused
 			},
-			paused: state.status !== "running",
+			paused: false,// state.status !== "running",
 			sync_begin_time: syncBeginTime
 		}
 		sendToPlayer(dispatcher, MatchEventCode.SYNC_TIMER, packet, playerId)
@@ -510,7 +518,7 @@ export function broadcastUpdateAvailabeActions(state: GameState, dispatcher: Mat
 		let actionMap: { [card: CardID]: AvailableCardActionPacket } = {};
 		if (Match.isPlayerTurn(state, playerId)) {
 			// set
-			let potentialSettableCards = Match.findCards(state, (card) =>  Match.isCardCanSetAsIngredient(state, card), CardLocation.HAND | CardLocation.SERVE_ZONE, playerId);
+			let potentialSettableCards = Match.findCards(state, (card) => Match.isCardCanSetAsIngredient(state, card), CardLocation.HAND | CardLocation.SERVE_ZONE, playerId);
 			for (let card of potentialSettableCards) {
 				let requiredCost = Card.getIngredientMinimumMaterialCost(card);
 				if (requiredCost >= 0) {
@@ -531,14 +539,24 @@ export function broadcastUpdateAvailabeActions(state: GameState, dispatcher: Mat
 
 			// cook summon
 			let potentialCookableCards = Match.findCards(state, (card) =>  Match.isCardCanCookSummon(state, card), CardLocation.RECIPE_DECK, playerId);
+			let potentialCookMaterialCards: Array<Card> = Match.getCards(state, CardLocation.STANDBY_ZONE, playerId);
 			for (let card of potentialCookableCards) {
-				actionMap[card.id] = actionMap[card.id] || { card: card.id };
-				actionMap[card.id].cook_summon = {
-					material_combinations: [],
-					columns: [],
-					can_quick_set: Card.hasType(card, CardType.INGREDIENT),
-					quick_set_columns: []
+				let recipe = Match.getRecipe(state, card);
+				if (!recipe) {
+					continue;
 				}
+				state.log?.debug("potentialCookMaterialCards " + JSON.stringify(potentialCookMaterialCards))
+				let potentialCombinations: Array<Array<Card>> = DishSummonProcedure.getRecipeValidCombinations(recipe, card, potentialCookMaterialCards);
+				if (potentialCombinations.length > 0) {
+					actionMap[card.id] = actionMap[card.id] || { card: card.id };
+					actionMap[card.id].cook_summon = {
+						material_combinations: potentialCombinations.map(combination => combination.map(card => card.id)),
+						columns: [],
+						can_quick_set: Card.hasType(card, CardType.INGREDIENT),
+						quick_set_columns: []
+					}
+				}
+
 			}
 
 			// attack
