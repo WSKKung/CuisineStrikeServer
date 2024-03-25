@@ -144,26 +144,29 @@ export namespace DishSummonProcedure {
 	 * @params combinations Array of combinations of materials that can be used to complete the recipe
 	*/ 
 	function backtrackGetRecipeCombinations(recipe: Recipe, card: Card, materials: Array<Card>, materialIndex: number, usedMaterialPerSlots: Array<Array<Card>>, combinations: Array<Array<Card>>): void {
-		// all materials are assigned to recipe slot
-		if (materialIndex === materials.length) {
-			
-			// check minimum material count for each slot
-			for (let slotIndex = 0; slotIndex < recipe.slots.length; slotIndex++) {
-				let slot = recipe.slots[slotIndex];
-				let slotMaterials = usedMaterialPerSlots[slotIndex];
-				// failed, current slot have no enough material
-				if (slotMaterials.length < slot.min) {
-					return;
-				}
-			}
 
+		// check recipe valid without current material
+		// check minimum material count for each slot
+		let validCombinationWithoutCurrentMaterial: boolean = true;
+		for (let slotIndex = 0; slotIndex < recipe.slots.length; slotIndex++) {
+			let slot = recipe.slots[slotIndex];
+			let slotMaterials = usedMaterialPerSlots[slotIndex];
+			// failed, current slot have no enough material
+			if (slotMaterials.length < slot.min) {
+				validCombinationWithoutCurrentMaterial = false;
+				break;
+			}
+		}
+
+		if (validCombinationWithoutCurrentMaterial) {
 			// success, all materials assigned to some slots and all slots fulfill its material requirement
 			let foundCombination = usedMaterialPerSlots.reduce((a, b) => a.concat(b), []);
 			if (foundCombination.length > 0) {
 				combinations.push(foundCombination);
 			}
-			return;
 		}
+
+		if (materialIndex >= materials.length) return;
 
 		let currentMaterial = materials[materialIndex];
 
@@ -192,6 +195,7 @@ export namespace DishSummonProcedure {
 			slotMaterials.pop();
 
 		}
+
 	}
 
 	export function getRecipeValidCombinations(recipe: Recipe, card: Card, materials: Array<Card>): Array<Array<Card>> {

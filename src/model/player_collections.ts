@@ -1,10 +1,12 @@
 import { z } from "zod"
 
+export type CollectionItem = CardItem
+
 export type CardCollection = {
 	cards: Array<CardItem>
 }
 
-export type CardItem = {
+export interface CardItem {
 	id: string,
 	code: number
 }

@@ -35,6 +35,7 @@ export type GameBaseEvent = {
 	type: string
 	context: GameEventContext
 	canceled?: boolean
+	responded?: boolean
 }
 
 export type GameEventChangeTurn = GameBaseEvent & {
@@ -80,6 +81,7 @@ export type GameEventDeclareAttack = GameBaseEvent & {
 
 export type GameEventAttack = GameBaseEvent & {
 	type: "attack"
+	negated?: boolean
 } & Attack
 
 export type GameEventUpdateCard = GameBaseEvent & {

@@ -1,4 +1,5 @@
-import { boolean } from "zod";
+
+type ComparerFunction<T> = (v1: T, v2: T) => number
 
 export namespace Utility {
 
@@ -69,6 +70,37 @@ export namespace Utility {
 	}
 }
 
+export namespace SortUtil {
+
+	/**
+	 * Create a boolean comparator 
+	 * @param getter 
+	 * @param beforeValue 
+	 * @param fallbackComparer 
+	 * @returns 
+	 */
+	export function compareBoolean<T>(getter: (v: T) => boolean, beforeValue: boolean = false, fallback?: ComparerFunction<T> | undefined): ComparerFunction<T> {
+		return (v1, v2) => {
+			let comp1 = getter(v1);
+			let comp2 = getter(v2);
+			if (comp1 === comp2) {
+                return fallback ? fallback(v1, v2) : 0;
+            }
+			if (comp1 === beforeValue) return -1;
+			return 1;
+		}
+	}
+
+	export function compareBooleanTF<T>(getter: (value: T) => boolean, fallback?: ComparerFunction<T> | undefined): ComparerFunction<T> {
+		return compareBoolean(getter, true, fallback)
+	}
+
+	export function compareBooleanFT<T>(getter: (value: T) => boolean, fallback?: ComparerFunction<T> | undefined): ComparerFunction<T> {
+		return compareBoolean(getter, false, fallback)
+	}
+
+}
+
 export namespace ArrayUtil {
 	/**
 	 * Shuffle contents of given array using Fisher–Yates shuffle algorithm
@@ -96,8 +128,7 @@ export namespace ArrayUtil {
 	}
 	
 	/**
-	 * Shuffle contents of given array using Fisher–Yates shuffle algorithm
-	 * This function mutates the given array.
+	 * Picks random unique member from given array
 	 * @param array 
 	 * @returns 
 	 */
@@ -115,6 +146,28 @@ export namespace ArrayUtil {
 		}
 		
 		return pickedIndices.map(idx => array[idx]);
+	}
+		
+	/**
+	 * Picks a random unique member from given array using weighted randomness, given weight function from each member to pick
+	 * @param array 
+	 * @returns 
+	 */
+	export function pickRandomWeighted<T>(array: Array<T>, weightFunction: (entry: T) => number): T {
+		let totalWeight: number = array.map(e => weightFunction(e)).reduce((a,b) => a+b, 0);
+		let sortedArrayByWeight = [...array];
+		sortedArrayByWeight.sort((a,b) => weightFunction(a) - weightFunction(b));
+
+		let cumulativeRandomWeight = Math.random() * totalWeight;
+		for (let member of sortedArrayByWeight) {
+			let weight = weightFunction(member);
+			if (cumulativeRandomWeight < weight) {
+				return member;
+			}
+			cumulativeRandomWeight -= weight;
+		}
+
+		throw new Error("This is a bug, this should never be throwned!");
 	}
 
 	export function countUnique<T, K>(array: Array<T>, keyFunction: (value: T) => K): Array<{ key: K, count: number }> {
@@ -210,4 +263,37 @@ export namespace BitField {
 		return result;
 	}
 
+}
+
+export namespace UUIDUtil {
+
+	export const NULL = '00000000-0000-0000-0000-000000000000'
+
+	export function idToBase64(uuid: string): string {
+		let uuidBytes = uuid.replace(/-/g, '');
+		let uuidByteWords = uuidBytes.match(/.{1,2}/g)
+		if (!uuidByteWords) return ""
+		let uuidByteArray = uuidByteWords.map(function(byte) {
+			return parseInt(byte, 16);
+		});
+		let base64Encoded = btoa(String.fromCharCode.apply(null, uuidByteArray));
+		return base64Encoded;
+	}
+
+	export function base64ToId(encoded: string): string {
+		let decodedByteArray = atob(encoded).split('').map(function(char) {
+			return char.charCodeAt(0);
+		});
+		let uuidBytes = decodedByteArray.map(function(byte) {
+			return ('0' + byte.toString(16)).slice(-2);
+		}).join('');
+		let uuidString = [
+			uuidBytes.substring(0, 8),
+			uuidBytes.substring(8, 12),
+			uuidBytes.substring(12, 16),
+			uuidBytes.substring(16, 20),
+			uuidBytes.substring(20)
+		].join('-');
+		return uuidString;
+	}
 }

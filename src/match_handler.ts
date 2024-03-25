@@ -1,10 +1,10 @@
 import { Card, CardLocation, CardType } from "./model/cards";
 import { receivePlayerMessage } from "./communications/receiver";
-import { broadcastMatchState, broadcastMatchEvent, broadcastMatchEnd, broadcastUpdateAvailabeActions, sendRequestChoiceAction, sendResponseChoiceAction, broadcastGameStart, broadcastGameEnd, broadcastMatchSyncReady, broadcastMatchSyncTimer } from "./communications/sender";
+import { broadcastMatchState, broadcastMatchEvent, broadcastMatchEnd, broadcastUpdateAvailabeActions, sendRequestChoiceAction, sendResponseChoiceAction, broadcastGameStart, broadcastGameEnd, broadcastMatchSyncReady, broadcastMatchSyncTimer, sendCurrentMatchState } from "./communications/sender";
 import { GameEventListener, GameEventType, createGameEventListener } from "./event_queue";
 import { EventReason, GameEvent, GameEventContext } from "./model/events";
 import { EventQueue, GameState, Match, getPlayerId } from "./match";
-import { createNakamaIDGenerator, createNakamaMatchDispatcher, NakamaAdapter } from "./wrapper";
+import { createNakamaIDGenerator, createNakamaMatchDispatcher, createSequentialIDGenerator, NakamaAdapter } from "./wrapper";
 import { GameConfiguration } from "./constants";
 import { Utility } from "./utility";
 import { GameEventHandler, createEventHandler, setupBaseMechanicsEventHandler } from "./event_handler";
@@ -79,14 +79,30 @@ const matchJoinAttempt: nkruntime.MatchJoinAttemptFunction = function(ctx, logge
 const matchJoin: nkruntime.MatchJoinFunction = function(ctx, logger, nk, dispatcher, tick, state, presences) {
 	let gameState: GameState = state.gameState;
 	let currentPresences: PlayerPresences = state.presences;
-	logger.info(`Player ${presences.map(getPlayerId).join(", ")} joined a match`);
-	presences.forEach(presence => {
-		let playerId = getPlayerId(presence);
-		Match.addPlayer(gameState, playerId);
-		Match.setPlayerOnline(gameState, playerId, true);
-		currentPresences[playerId] = presence;
-		//Match.setPresence(gameState, pId, p);
-	});
+	let matchDispatcher = NakamaAdapter.matchDispatcher({ nk, logger, dispatcher, presences: currentPresences });
+	//logger.info(`Player ${presences.map(getPlayerId).join(", ")} joined a match`);
+	if (gameState.status === "init") {
+		presences.forEach(presence => {
+			let playerId = getPlayerId(presence);
+			Match.addPlayer(gameState, playerId);
+			Match.setPlayerOnline(gameState, playerId, true);
+			currentPresences[playerId] = presence;
+			//Match.setPresence(gameState, pId, p);
+		});
+	} else if (gameState.status === "paused" && gameState.pauseStatus?.reason === "disconnected") {
+		presences.forEach(presence => {
+			let playerId = getPlayerId(presence);
+			Match.setPlayerOnline(gameState, playerId, true);
+			currentPresences[playerId] = presence;
+			sendCurrentMatchState(gameState, matchDispatcher, playerId);
+		});
+
+		if (Match.getActivePlayers(gameState).length >= 2) {
+			Match.unpause(gameState);
+		}
+	}
+
+
 	return {
 		state: {
 			gameState,
@@ -99,11 +115,19 @@ const matchLeave: nkruntime.MatchLeaveFunction = function(ctx, logger, nk, dispa
 	let gameState: GameState = state.gameState;
 	let currentPresences: PlayerPresences = state.presences;
 	let matchDispatcher = NakamaAdapter.matchDispatcher({ nk, logger, dispatcher, presences: currentPresences })
-	logger.info(`Player ${presences.map(getPlayerId).join(", ")} left a match`);
+
+	//logger.info(`Player ${presences.map(getPlayerId).join(", ")} left a match`);
+
 	presences.forEach(presence => {
 		let playerId = getPlayerId(presence);
 		Match.setPlayerOnline(gameState, playerId, false);
 		currentPresences[playerId] = undefined;
+
+		// save match id into metadata in case player want to rejoin
+		let account = nk.accountGetId(playerId);
+		let meta = account.user.metadata;
+		meta.ongoing_match_id = ctx.matchId;
+		nk.accountUpdateId(playerId, null, null, null, null, null, null, meta);
 		//Match.removePresence(gameState, pId);
 	});
 
@@ -122,12 +146,14 @@ const matchLeave: nkruntime.MatchLeaveFunction = function(ctx, logger, nk, dispa
 };
 
 const matchLoop: nkruntime.MatchLoopFunction = function(ctx, logger, nk, dispatcher, tick, state, messages) {
+	let deltaTime: number = 1000 / GameConfiguration.tickRate;
+
 	let gameState: GameState = state.gameState;
 	let presences: PlayerPresences = state.presences;
 	let eventHandler: GameEventHandler = state.eventHandler;
 	gameState.log = logger;
 	gameState.nk = nk;
-	let idGen = createNakamaIDGenerator(nk);
+	let idGen = createSequentialIDGenerator();
 	let matchDispatcher = createNakamaMatchDispatcher(dispatcher, presences);
 	let gameStorageAccess = NakamaAdapter.storageAccess({ nk, logger });
 	let players = Match.getActivePlayers(gameState);
@@ -148,11 +174,12 @@ const matchLoop: nkruntime.MatchLoopFunction = function(ctx, logger, nk, dispatc
 
 				(async() => {
 					
+					broadcastMatchState(gameState, matchDispatcher);
+					
 					let initContext: GameEventContext = { player: null, reason: EventReason.INIT };
 					// initialize deck
 					for (let id of players) {
 						// main deck
-						// TODO: Use player's selected deck from database instead
 						let deckCards: Array<Card> = [];
 						let handCards: Array<Card> = [];
 						let deck: Deck = gameStorageAccess.readPlayerActiveDeck(id);
@@ -163,16 +190,21 @@ const matchLoop: nkruntime.MatchLoopFunction = function(ctx, logger, nk, dispatc
 								return Card.create(cardId, entry.code, id, cardProps)
 							});
 
-							// shuffle
 							Utility.shuffle(deckCards);
 
+							// select random cards from deck to be in the initial hand
 							handCards = deckCards.splice(0, GameConfiguration.initialHandSize);
+							for (let code of [11,25]) {
+								let cardId = idGen.uuid();
+								let cardProps = gameStorageAccess.readCardProperty(code);
+								handCards.push(Card.create(cardId, code, id, cardProps));
+							}
+
 						} catch (error: any) {
 							logger.error(`Main deck initialization for player %s failed: %s`, id, error.message);
 						}
 
 						// recipe deck
-						// TODO: Use player's selected deck from database instead
 						let recipeDeckCards: Array<Card> = [];
 						try {
 							recipeDeckCards = deck.recipe.map(entry => {
@@ -212,11 +244,6 @@ const matchLoop: nkruntime.MatchLoopFunction = function(ctx, logger, nk, dispatc
 						}
 					}
 
-					//logger.debug("async init broadcast match state beginning")
-
-					broadcastMatchState(gameState, matchDispatcher);
-					//broadcastUpdateAvailabeActions(gameState, matchDispatcher);
-
 					await Match.beginTurn(gameState, initContext);
 					
 				})();
@@ -240,7 +267,19 @@ const matchLoop: nkruntime.MatchLoopFunction = function(ctx, logger, nk, dispatc
 				receivePlayerMessage(gameState, senderId, opCode, dataStr, matchDispatcher, logger, gameStorageAccess);
 			});
 
-			if (gameState.pauseStatus === null) {
+			if (gameState.pauseStatus !== null) {
+				switch (gameState.pauseStatus.reason) {
+					case "disconnected":
+						gameState.pauseStatus.timeout -= deltaTime;
+						if (gameState.pauseStatus.timeout <= 0) {
+							Match.end(gameState, {
+								winners: players,
+								reason: EndResultStringKeys.DISCONNECTED
+							});
+						}
+						break;
+				}
+			} else {
 				gameState.status = "running";
 			}
 
@@ -256,6 +295,10 @@ const matchLoop: nkruntime.MatchLoopFunction = function(ctx, logger, nk, dispatc
 					winners: players,
 					reason: EndResultStringKeys.DISCONNECTED
 				}
+				Match.pause(gameState, {
+					reason: "disconnected",
+					timeout: GameConfiguration.disconnectTimeout
+				});
 				break;
 			}
 
@@ -269,12 +312,18 @@ const matchLoop: nkruntime.MatchLoopFunction = function(ctx, logger, nk, dispatc
 			
 			// copy event queue from game state
 			// events on held from previos paused will be processed later than the events happening after pause (from response, etc.)
-			let currentEventQueue: EventQueue = [ ...gameState.eventQueue, ...gameState.onHeldEventQueue ];
+			let currentEventQueue: EventQueue = [ ...gameState.eventQueue ];
 			// clear current event queue for upcoming events
 			gameState.eventQueue.splice(0);
-			gameState.onHeldEventQueue.splice(0);
 
 			if (currentEventQueue.length > 0) {
+				// pre-resolution trigger response
+				if (Match.makePlayersSelectResponseTriggerAbility(gameState, currentEventQueue.map(e => e.event), "before")) {
+					// hold every event to process later if there is some ability player can select
+					gameState.onHeldEventQueue.push(...currentEventQueue);
+					break;
+				}
+
 				let resolvedTickEvent: EventQueue = []
 				// resolve event
 				for (let i = 0; i < currentEventQueue.length; i++) {
@@ -306,24 +355,35 @@ const matchLoop: nkruntime.MatchLoopFunction = function(ctx, logger, nk, dispatc
 					Match.pauseAllPlayersTimer(gameState);
 				}
 			}
-			// do post-resolution event processing
-			else if (gameState.resolvedEventQueue.length > 0) {
-				// update available action
-				broadcastUpdateAvailabeActions(gameState, matchDispatcher);
-				// trigger response
-				Match.makePlayersSelectResponseTriggerAbility(gameState, gameState.resolvedEventQueue.map(e => e.event), "after");
-				gameState.resolvedEventQueue.splice(0);
-				// pause until every player are ready
-				Match.pause(gameState, {
-					reason: "sync_ready",
-					remainingPlayers: players.concat()
-				});
-				broadcastMatchSyncReady(gameState, matchDispatcher);
-			}
-			// no event to process
 			else {
-				Match.resumePlayerTimer(gameState, Match.getTurnPlayer(gameState));
+				// push held event to resolve next tick
+				if (gameState.onHeldEventQueue.length > 0) {
+					gameState.eventQueue.push(...gameState.onHeldEventQueue);
+					gameState.onHeldEventQueue.splice(0);
+				}
+
+				// do post-resolution event processing
+				else if (gameState.resolvedEventQueue.length > 0) {
+					// update available action
+					broadcastUpdateAvailabeActions(gameState, matchDispatcher);
+					// pause if no trigger action until every player are ready
+					Match.pause(gameState, {
+						reason: "sync_ready",
+						remainingPlayers: players.concat()
+					});
+					broadcastMatchSyncReady(gameState, matchDispatcher);
+					// also post-resolution trigger response
+					
+					Match.makePlayersSelectResponseTriggerAbility(gameState, gameState.resolvedEventQueue.map(e => e.event), "after")
+
+					gameState.resolvedEventQueue.splice(0)
+				}
+				// no event to process
+				else {
+					Match.resumePlayerTimer(gameState, Match.getTurnPlayer(gameState));
+				}
 			}
+
 
 			break;
 
@@ -346,8 +406,6 @@ const matchLoop: nkruntime.MatchLoopFunction = function(ctx, logger, nk, dispatc
 	}
 
 	if (gameState.status == "paused" || gameState.status == "running") {
-		// update timer: delta time in millisecond unit
-		let deltaTime: number = 1000 / GameConfiguration.tickRate;
 		for (let player of players) {
 			Match.countdownPlayerTimer(gameState, player, deltaTime);
 		}

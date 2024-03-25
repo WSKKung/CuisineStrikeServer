@@ -3,7 +3,7 @@ import { EventReason, GameEvent, GameEventContext } from "./model/events";
 import { CardZone, Field } from "./model/field";
 import { CardLocation } from "./model/cards";
 import { GameConfiguration } from "./constants";
-import { ArrayUtil, BitField, Utility } from "./utility";
+import { ArrayUtil, BitField, SortUtil, Utility } from "./utility";
 import { BUFF_ID_DAMAGED, CardBuff, CardBuffResetCondition as CardBuffResetFlag } from "./buff";
 import { CardEffect, CardEffectContext, CardEffectInstance, CardEffectUseLimit } from "./model/effect";
 import { PlayerChoiceRequest, PlayerChoiceRequestCards, PlayerChoiceResponse, PlayerChoiceResponseCards, PlayerChoiceResponseValue, PlayerChoiceType } from "./model/player_request";
@@ -19,6 +19,7 @@ export type EventQueue = Array<{
 	event: GameEvent
 	resolve(): void
 	reject(): void
+	responded: boolean
 	resolved: boolean
 }>
 
@@ -230,7 +231,8 @@ export namespace Match {
 				reject() {
 					rejectPromise(event)
 				},
-				resolved: false
+				resolved: false,
+				responded: false
 			})
 		});
 		return promise;
@@ -284,6 +286,17 @@ export namespace Match {
 		// discard if is action or trigger activated from hand
 		if (Card.hasType(card, CardType.ACTION | CardType.TRIGGER) && Card.hasLocation(card, CardLocation.HAND)) {
 			Match.discard(state, context, [card]);
+		}
+		else if (Card.isType(card, CardType.INGREDIENT_DISH) && Card.hasLocation(card, CardLocation.ON_FIELD)) {
+			let disableSetBuff: CardBuff = {
+				id: newUUID(state),
+				type: "disable_set",
+				operation: "add",
+				amount: 1,
+				sourceCard: card,
+				resets: CardBuffResetFlag.SOURCE_REMOVED | CardBuffResetFlag.TARGET_REMOVED | CardBuffResetFlag.END_TURN
+			};
+			addBuff(state, activateEvent.context, [card], disableSetBuff);
 		}
 
 		CardEffectInstance.setLimitReached(effect, CardEffectUseLimit.ONCE_PER_TURN);
@@ -504,7 +517,7 @@ export namespace Match {
 
 		updateCards(state, context, affectedCards)
 
-		const getLocations = (_cards: Array<Card>) => _cards.map(c => c.location + "").reduce((a,b) => a + " " + b, "")
+		//const getLocations = (_cards: Array<Card>) => _cards.map(c => c.location + "").reduce((a,b) => a + " " + b, "")
 		// print card location list acquired from parameters: location updated correctly 
 		//state.log?.debug("card locations from parameters: " + getLocations(affectedCards))
 		// print card location list from card data from game state registry: location somehow did not get updated >:/
@@ -871,6 +884,9 @@ export namespace Match {
 		if (!Card.hasType(card, CardType.INGREDIENT)) {
 			return false;
 		}
+		if (getBuffs(state, card).some(buff => buff.type === "disable_set" && buff.amount !== 0)) {
+			return false;
+		}
 		if (Card.hasType(card, CardType.DISH)) {
 			return Card.hasLocation(card, CardLocation.RECIPE_DECK | CardLocation.SERVE_ZONE);
 		}
@@ -948,37 +964,28 @@ export namespace Match {
 		if (!isCardCanAttack(state, attackingCard)) {
 			return;
 		}
-		
-		let declareAttackEvent: GameEvent & { type: "declare_attack" } = { 
-			id: newUUID(state), 
-			type: "declare_attack",
-			context: context,
-			attackingCard: attackingCard, 
-			isDirect: false, 
-			targetCard: targetCard,
-			negated: false
-		};
-		declareAttackEvent = await pushEvent(state, declareAttackEvent);
-		
-		let attackEvent: GameEvent = {
-			id: newUUID(state),
-			type: "attack",
-			context: declareAttackEvent.context,
-			attackingCard: declareAttackEvent.attackingCard,
-			isDirect: false,
-			targetCard: declareAttackEvent.targetCard
-		};
-		attackEvent = await pushEvent(state, attackEvent);
-		attackEvent.context.reason |= EventReason.BATTLE
 
-		if (isCardCanAttack(state, attackEvent.attackingCard)) {
-			let targetPower = Card.getPower(attackEvent.targetCard);
-			let attackerPower = Card.getPower(attackEvent.attackingCard);
-			damage(state, attackEvent.context, [attackEvent.attackingCard], targetPower);
-			damage(state, attackEvent.context, [attackEvent.targetCard], attackerPower);				
+		try {
+			let event = await pushEvent(state, { 
+				id: newUUID(state), 
+				type: "attack",
+				context: context,
+				attackingCard: attackingCard, 
+				isDirect: false, 
+				targetCard: targetCard,
+				negated: false
+			});
+			if (isCardCanAttack(state, event.attackingCard)) {
+				let targetPower = Card.getPower(event.targetCard);
+				let attackerPower = Card.getPower(event.attackingCard);
+				damage(state, event.context, [event.attackingCard], targetPower);
+				damage(state, event.context, [event.targetCard], attackerPower);				
+			}
+		} catch (err) {
+
+		} finally {
+			removeCardAttackCount(state, attackingCard);
 		}
-		removeCardAttackCount(state, attackingCard);
-
 	}
 
 	export async function attackPlayer(state: GameState, context: GameEventContext, attackingCard: Card, targetPlayerId: string): Promise<void> {
@@ -986,33 +993,27 @@ export namespace Match {
 			return;
 		}
 
-		let attackDeclareEvent: GameEvent & { type: "declare_attack" } = { 
-			id: newUUID(state), 
-			type: "declare_attack",
-			context: context,
-			attackingCard: attackingCard, 
-			isDirect: true, 
-			targetPlayer: targetPlayerId,
-			negated: false
-		};
-		attackDeclareEvent = await pushEvent(state, attackDeclareEvent);
+		try {
+			let event = await pushEvent(state, { 
+				id: newUUID(state), 
+				type: "attack",
+				context: context,
+				attackingCard: attackingCard, 
+				isDirect: true, 
+				targetPlayer: targetPlayerId,
+				negated: false
+			});
+			event.context.reason |= EventReason.BATTLE
 
-		let attackEvent: GameEvent = {
-			id: newUUID(state),
-			type: "attack",
-			context: attackDeclareEvent.context,
-			attackingCard: attackDeclareEvent.attackingCard,
-			isDirect: true,
-			targetPlayer: attackDeclareEvent.targetPlayer
-		};
-		attackEvent = await pushEvent(state, attackEvent);
-		attackEvent.context.reason |= EventReason.BATTLE
+			if (!event.negated && isCardCanAttack(state, event.attackingCard)) {
+				let attackerPower = Card.getPower(event.attackingCard);
+				Match.damagePlayer(state, event.context, event.targetPlayer, attackerPower);			
+			}
+		} catch (err) {
 
-		if (isCardCanAttack(state, attackEvent.attackingCard)) {
-			let attackerPower = Card.getPower(attackEvent.attackingCard);
-			Match.damagePlayer(state, attackEvent.context, attackEvent.targetPlayer, attackerPower);			
+		} finally {
+			removeCardAttackCount(state, attackingCard);
 		}
-		removeCardAttackCount(state, attackingCard);
 		
 	}
 
@@ -1064,6 +1065,8 @@ export namespace Match {
 	export function pause(state: GameState, status: GamePauseStatus): void {
 		state.status = "paused"
 		state.pauseStatus = status;
+		state.resolvedEventQueue.push(...state.eventQueue);
+		state.eventQueue.splice(0);
 	}
 
 	export function unpause(state: GameState): void {
@@ -1105,7 +1108,6 @@ export namespace Match {
 				context: { reason: EventReason.UNSPECIFIED, player: playerId },
 				response: response
 			});
-
 
 			state.pauseStatus = null
 			//state.log?.debug("dispatch response " + JSON.stringify(state))
@@ -1255,7 +1257,7 @@ export namespace Match {
 			CardEffectInstance.checkCondition(effect, activateCtx);
 	}
 
-	function getUseableResponseTriggerAbilities(state: GameState, events: Array<GameEvent>, resolutionPhase: "before" | "after"): Array<{ event: GameEvent, effect: CardEffectInstance }> {
+	export function getResponseTriggerAbilities(state: GameState, events: Array<GameEvent>, resolutionPhase: "before" | "after"): Array<{ event: GameEvent, effect: CardEffectInstance }> {
 		let applicableTriggerEffects = Object.values(state.effects).flat(1).map((e) => {
 			if (e.effect.type === "trigger" && e.effect.resolutionPhase === resolutionPhase) {
 				for (let event of events) {
@@ -1268,45 +1270,46 @@ export namespace Match {
 		}).filter((e): e is NonNullable<typeof e> => e !== null);
 		return applicableTriggerEffects;
 	}
-
-	export async function makePlayersSelectResponseTriggerAbility(state: GameState, events: Array<GameEvent>, resolutionPhase: "before" | "after"): Promise<boolean> {
-		let applicableTriggerEffects = getUseableResponseTriggerAbilities(state, events, resolutionPhase);
+	export function makePlayersSelectResponseTriggerAbility(state: GameState, events: Array<GameEvent>, resolutionPhase: "before" | "after"): boolean {
+		events = events.filter(e => !e.canceled && !e.responded)
+		events.forEach(event => event.responded = true);
+		
+		let applicableTriggerEffects = getResponseTriggerAbilities(state, events, resolutionPhase);
 		
 		let triggerEffectsGroupedByOwner = ArrayUtil.group(applicableTriggerEffects, e => Card.getOwner(e.effect.card));
-		// prioritize opponent before turn player
-		let turnPlayer = getTurnPlayer(state);
-		let firstPlayer = getOpponent(state, turnPlayer);
-		let secondPlayer = turnPlayer;
+		// prioritize opponent of turn player first
+		triggerEffectsGroupedByOwner.sort(SortUtil.compareBooleanFT(entry => Match.isPlayerTurn(state, entry.key)));
 
-		for (let { key, items} of triggerEffectsGroupedByOwner) {
+		for (let { key, items } of triggerEffectsGroupedByOwner) {
 			let player = key
 			let playerEffects = items;
 			if (playerEffects && playerEffects.length > 0) {
 				setSelectionHint(state, "HINT_ACTIVATE_TRIGGER");
-				let selected = await makePlayerSelectCards(state, { reason: EventReason.GAMERULE, player: null }, player, playerEffects.map(e => e.effect.card), 0, 1);
-				// activate effect if any is selected
-				if (selected.length > 0) {
-					//state.resolvingTriggerAbility = true;
-					let triggeringCard = selected[0];
-					let triggeringAbilityEntry = playerEffects.find(e => e.effect.card.id === triggeringCard.id);
-					if (triggeringAbilityEntry) {
-						// push activation to activate it BEFORE processing event in the next tick
-						//state.pendingTriggerActivations.push({
-						//	effect: triggeringAbilityEntry.effect,
-						//	event: triggeringAbilityEntry.event
-						//});
-						let activateContext: GameEventContext = { 
-							reason: EventReason.ACTIVATE,
-							player: player
+				makePlayerSelectCards(state, { reason: EventReason.GAMERULE, player: null }, player, playerEffects.map(e => e.effect.card), 0, 1).then((selected) => {
+					// activate effect if any is selected
+					if (selected.length > 0) {
+						//state.resolvingTriggerAbility = true;
+						let triggeringCard = selected[0];
+						let triggeringAbilityEntry = playerEffects.find(e => e.effect.card.id === triggeringCard.id);
+						if (triggeringAbilityEntry) {
+							// push activation to activate it BEFORE processing event in the next tick
+							//state.pendingTriggerActivations.push({
+							//	effect: triggeringAbilityEntry.effect,
+							//	event: triggeringAbilityEntry.event
+							//});
+							let activateContext: GameEventContext = { 
+								reason: EventReason.ACTIVATE,
+								player: player
+							}
+							resolveAbility(state, activateContext, triggeringAbilityEntry.effect, triggeringAbilityEntry.event);
 						}
-						await resolveAbility(state, activateContext, triggeringAbilityEntry.effect, triggeringAbilityEntry.event);
-						//state.resolvingTriggerAbility = false;
-						// skip any remaining to restrict one trigger effect on any action at the time
-						return true;
 					}
-				}
-			}			
+				});
+				// skip any remaining to restrict one trigger effect on any action at the time
+				return true;
+			}
 		}
+
 		return false;
 	}
 

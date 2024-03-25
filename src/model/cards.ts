@@ -3,6 +3,7 @@ import { BitField, Utility } from "../utility";
 import { CamelKeysToSnake } from "../utility/types";
 import { CardEffectInstance } from "./effect";
 import { CardBuff } from "../buff";
+import { Recipe } from "./recipes";
 
 export type CardID = string;
 
@@ -64,7 +65,8 @@ export type Card = {
 	damage: number,
 	attacks: number,
 	abilities: Array<CardEffectInstance>,
-	buffs: Array<CardBuff>
+	buffs: Array<CardBuff>,
+	recipe: Recipe | null
 }
 
 export const CardSchemas = {
@@ -98,7 +100,8 @@ export namespace Card {
 			damage: 0,
 			attacks: 0,
 			abilities: [],
-			buffs: []
+			buffs: [],
+			recipe: null
 		};
 		return card;
 	}

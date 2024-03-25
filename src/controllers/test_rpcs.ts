@@ -2,8 +2,11 @@ import { Card } from "../model/cards";
 import { DishSummonProcedure } from "../cards/cook_summon_procedure";
 import { Recipe } from "../model/recipes";
 import { createNakamaGameStorageAccess } from "../wrapper";
+import { guardSystemOnly } from "../controllers/guard";
 
 export const ingredientSetMaterialCheckRPC: nkruntime.RpcFunction = (ctx, logger, nk, payload) => {
+	guardSystemOnly(ctx, logger, nk, payload);
+	
 	// create API dependecy controllers
 	let gameStorageAccess = createNakamaGameStorageAccess({ nk, logger });
 
@@ -39,6 +42,8 @@ export const ingredientSetMaterialCheckRPC: nkruntime.RpcFunction = (ctx, logger
  * @returns
 */
 export const recipeCheckRPC: nkruntime.RpcFunction = (ctx, logger, nk, payload) => {
+	guardSystemOnly(ctx, logger, nk, payload);
+
 	// create API dependecy controllers
 	let gameStorageAccess = createNakamaGameStorageAccess({ nk, logger });
 

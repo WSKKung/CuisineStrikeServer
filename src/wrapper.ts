@@ -2,10 +2,11 @@ import { CardProperties, CardType, CardClass, CardSchemas } from "./model/cards"
 import { EMPTY_RECIPE, Recipe, RecipeSchemas } from "./model/recipes";
 import { Deck, DeckSchemas, Decklist, validateDeck } from "./model/decks";
 import { PlayerPresences } from "./match_handler";
-import zod from "zod";
-import { Utility } from "./utility";
+import zod, { z } from "zod";
+import { UUIDUtil, Utility } from "./utility";
 import { CardCollection, CardItem, CollectionSchemas } from "./model/player_collections";
 import { DecklistConfiguration } from "./constants";
+import { PlayerShop, PlayerShops, SHOP_SCHEMAS, ShopItem, ShopSupplier } from "./model/stores";
 
 export interface MatchMessageDispatcher {
 	dispatch(code: number, message: string, destinationPlayerIds?: Array<string> | null, senderId?: string | null, reliable?: boolean): void,
@@ -26,6 +27,7 @@ export interface GameStorageAccess {
 	readPlayerCardCollection(playerId: string): CardCollection,
 	addPlayerDeck(playerId: string, deck: Deck): void,
 	addCardToPlayerCollection(playerId: string, cards: Array<CardItem>): void,
+	updatePlayerDecklist(playerId: string, decklist: Decklist): void,
 	updatePlayerDeck(playerId: string, deck: Deck): void,
 	updatePlayerCardCollections(playerId: string, collection: CardCollection): void,
 	setPlayerActiveDeck(playerId: string, deckId: string): void,
@@ -33,6 +35,10 @@ export interface GameStorageAccess {
 	readPlayerCoin(playerId: string): number,
 	givePlayerCoin(playerId: string, amount: number): void,
 	takePlayerCoin(playerId: string, amount: number): void,
+	readPlayerShopSupplier(): ShopSupplier,
+	updatePlayerShopSupplier(supplier: ShopSupplier): void,
+	readPlayerShop(playerId: string): PlayerShop,
+	updatePlayerShop(playerId: string, shop: PlayerShop): void
 }
 
 export function createNakamaMatchDispatcher(nakamaDispatcher: nkruntime.MatchDispatcher, presences: PlayerPresences): MatchMessageDispatcher {
@@ -57,6 +63,17 @@ export function createNakamaIDGenerator(nakamaAPI: nkruntime.Nakama): IDGenerato
 	return {
 		uuid() {
 			return nakamaAPI.uuidv4();
+		}
+	}
+}
+
+export function createSequentialIDGenerator(initialId: number = 1): IDGenerator {
+	let nextId: number = initialId;
+	return {
+		uuid() {
+			let resultId = nextId;
+			nextId += 1;
+			return resultId.toString();
 		}
 	}
 }
@@ -107,6 +124,9 @@ export namespace NakamaAdapter {
 		const STARTER_DECKS_KEY = "starter_decks"
 		const DECKLIST_KEY = "decklist"
 		const COLLECTION_KEY = "collection"
+		const SHOP_SUPPLIER_KEY = "shop_supplier"
+		const SHOP_KEY = "shop"
+		const SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000000"
 
 		return {
 			readCardProperty(code) {
@@ -115,7 +135,7 @@ export namespace NakamaAdapter {
 					{
 						collection: SYSTEM_COLLECTION,
 						key: CARDS_KEY,
-						userId: "00000000-0000-0000-0000-000000000000"
+						userId: SYSTEM_USER_ID
 					}
 				]);
 				let cardData = (queryResult[0] && queryResult[0].value) || {};
@@ -148,7 +168,7 @@ export namespace NakamaAdapter {
 					{
 						collection: SYSTEM_COLLECTION,
 						key: RECIPES_KEY,
-						userId: "00000000-0000-0000-0000-000000000000"
+						userId: SYSTEM_USER_ID
 					}
 				]);
 				let recipeListData = (queryResult[0] && queryResult[0].value) || {};
@@ -169,7 +189,7 @@ export namespace NakamaAdapter {
 					{
 						collection: SYSTEM_COLLECTION,
 						key: STARTER_DECKS_KEY,
-						userId: "00000000-0000-0000-0000-000000000000"
+						userId: SYSTEM_USER_ID
 					}
 				]);
 				let rawData = (queryResult[0] && queryResult[0].value);
@@ -210,6 +230,9 @@ export namespace NakamaAdapter {
 						userId: playerId
 					}
 				]);
+
+				let playerCollection = this.readPlayerCardCollection(playerId);
+
 				let rawData = (queryResult[0] && queryResult[0].value);
 				//options.logger?.debug(JSON.stringify(queryResult))
 				
@@ -225,22 +248,10 @@ export namespace NakamaAdapter {
 						activeIndex: 0
 					}
 					// add cards from starter deck to player collection
-					let playerCollection = this.readPlayerCardCollection(playerId);
 					playerCollection.cards = playerCollection.cards.concat(obtainedDeck.main);
 					playerCollection.cards = playerCollection.cards.concat(obtainedDeck.recipe);
 					this.updatePlayerCardCollections(playerId, playerCollection);
-
-					options.nk.storageWrite([
-						{
-							collection: PLAYER_COLLECTION,
-							key: DECKLIST_KEY,
-							userId: playerId,
-							value: newDecklist,
-							version: "*",
-							permissionRead: 2,
-							permissionWrite: 1
-						}
-					])
+					this.updatePlayerDecklist(playerId, newDecklist);
 					return newDecklist;
 				}
 	
@@ -250,7 +261,51 @@ export namespace NakamaAdapter {
 					throw new Error(`Invalid player decks data: ${parseResult.error.message}`)
 				}
 
-				let decklist: Decklist = parseResult.data;
+				let decklist: Decklist = { decks: [], activeIndex: parseResult.data.activeIndex };
+				for (let deckData of parseResult.data.decks) {
+					let deck: Deck = { id: deckData.id, name: deckData.name, main: [], recipe: [] }
+
+					for (let cardData of deckData.main) {
+						let card: CardItem | undefined = undefined;
+						if (typeof(cardData) === "string") {
+							card = playerCollection.cards.find(c => c.id === cardData)
+						}
+						else if (typeof(cardData) === "object") {
+							let id = cardData.id
+							let code = cardData.code
+							card = playerCollection.cards.find(c => c.id === id)
+							if (!card) {
+								card = playerCollection.cards.find(c => (c.code === code) && deck.main.every(c2 => c2.id !== c.id));
+							}
+						}
+
+						if (card) {
+							deck.main.push(card);
+						}
+					}
+
+					for (let cardData of deckData.recipe) {
+						let card: CardItem | undefined = undefined;
+						if (typeof(cardData) === "string") {
+							card = playerCollection.cards.find(c => c.id === cardData)
+						}
+						else if (typeof(cardData) === "object") {
+							let id = cardData.id
+							let code = cardData.code
+							card = playerCollection.cards.find(c => c.id === id)
+							if (!card) {
+								card = playerCollection.cards.find(c => (c.code === code) && deck.recipe.every(c2 => c2.id !== c.id));
+							}
+						}
+
+						if (card) {
+							deck.recipe.push(card);
+						}
+					}
+					
+					decklist.decks.push(deck);
+				}
+				
 				// revalidate deck for unverified deck
 				let hasUnverifiedDeck = false;
 				for (let deck of decklist.decks) {
@@ -317,44 +372,52 @@ export namespace NakamaAdapter {
 				deck.valid = validateDeck(deck).valid;
 
 				decklist.decks.push(deck);
+				this.updatePlayerDecklist(playerId, decklist);
+			},
+
+			addCardToPlayerCollection(playerId, cards) {
+				let collection = this.readPlayerCardCollection(playerId);
+				let lastIndex = parseFloat(collection.cards.at(-1)?.id || "0") + 1;
+				cards.forEach((card, index) => card.id = (lastIndex + index).toString());
+				collection.cards = collection.cards.concat(cards);
+				this.updatePlayerCardCollections(playerId, collection);
+			},
+	
+			updatePlayerDecklist(playerId, decklist) {
+				let decklistData: z.infer<typeof DeckSchemas.DECKLIST> = {
+					decks: [],
+					activeIndex: decklist.activeIndex
+				};
+				for (let deck of decklist.decks) {
+					decklistData.decks.push({
+						id: deck.id,
+						name: deck.name,
+						main: deck.main.map(card => card.id),
+						recipe: deck.recipe.map(card => card.id)
+					})
+				}
 				options.nk.storageWrite([
 					{
 						collection: PLAYER_COLLECTION,
 						key: DECKLIST_KEY,
 						userId: playerId,
-						value: decklist,
+						value: decklistData,
 						permissionRead: 2,
 						permissionWrite: 1
 					}
 				]);
 			},
 
-			addCardToPlayerCollection(playerId, cards) {
-				let collection = this.readPlayerCardCollection(playerId);
-				collection.cards = collection.cards.concat(cards);
-				this.updatePlayerCardCollections(playerId, collection);
-			},
-	
 			updatePlayerDeck(playerId, deck) {
-				let decklist = this.readPlayerDecklist(playerId)
+				let decklist: Decklist = this.readPlayerDecklist(playerId)
 				let oldDeckIndex = decklist.decks.findIndex(existingDeck => existingDeck.id === deck.id);
 				if (oldDeckIndex < 0) {
 					throw new Error(`Player try to edit a deck that does not exist!`)
 				}
 
 				deck.valid = validateDeck(deck).valid;
-
 				decklist.decks[oldDeckIndex] = deck;
-				options.nk.storageWrite([
-					{
-						collection: PLAYER_COLLECTION,
-						key: DECKLIST_KEY,
-						userId: playerId,
-						value: decklist,
-						permissionRead: 2,
-						permissionWrite: 1
-					}
-				]);
+				this.updatePlayerDecklist(playerId, decklist);
 			},
 
 			updatePlayerCardCollections(playerId, collection) {
@@ -378,16 +441,7 @@ export namespace NakamaAdapter {
 				}
 
 				decklist.activeIndex = newActiveDeckIndex;
-				options.nk.storageWrite([
-					{
-						collection: PLAYER_COLLECTION,
-						key: DECKLIST_KEY,
-						userId: playerId,
-						value: decklist,
-						permissionRead: 2,
-						permissionWrite: 1
-					}
-				]);
+				this.updatePlayerDecklist(playerId, decklist);
 	
 			},
 	
@@ -403,16 +457,7 @@ export namespace NakamaAdapter {
 				if (deletedDeckIndex === decklist.activeIndex) {
 					decklist.activeIndex = 0;
 				}
-				options.nk.storageWrite([
-					{
-						collection: PLAYER_COLLECTION,
-						key: DECKLIST_KEY,
-						userId: playerId,
-						value: decklist,
-						permissionRead: 2,
-						permissionWrite: 1
-					}
-				]);
+				this.updatePlayerDecklist(playerId, decklist);
 
 			},
 			
@@ -428,6 +473,82 @@ export namespace NakamaAdapter {
 			takePlayerCoin(playerId: string, amount: number): void {
 				options.nk.walletUpdate(playerId, { coin: -amount });
 			},
+
+			readPlayerShopSupplier() {
+				let results = options.nk.storageRead([{
+					collection: SYSTEM_COLLECTION,
+					key: SHOP_SUPPLIER_KEY,
+					userId: SYSTEM_USER_ID
+				}]);
+
+				// default
+				if (!results[0]) {
+					let defaultSupplier: ShopSupplier = {
+						stocks: []
+					};
+					this.updatePlayerShopSupplier(defaultSupplier);
+					return defaultSupplier;
+				}
+				let parseResult = SHOP_SCHEMAS.SHOP_SUPPLIER.safeParse(results[0].value);
+				if (!parseResult.success) {
+					throw new Error("Shop supplier in database invalid or corrupted!");
+				}
+
+				return parseResult.data;
+			},
+
+			updatePlayerShopSupplier(supplier) {
+				// filter out every supplier that is expired by the moment
+				let updateTime = Date.now()
+				supplier.stocks = supplier.stocks.filter(s => !PlayerShops.isSupplierExpired(s, updateTime))
+				options.nk.storageWrite([{
+					collection: SYSTEM_COLLECTION,
+					key: SHOP_SUPPLIER_KEY,
+					userId: SYSTEM_USER_ID,
+					value: supplier,
+					permissionRead: 2,
+					permissionWrite: 0
+				}]);
+			},
+
+			readPlayerShop(playerId): PlayerShop {
+				let supplier = this.readPlayerShopSupplier();
+				let results = options.nk.storageRead([{
+					collection: PLAYER_COLLECTION,
+					key: SHOP_KEY,
+					userId: playerId
+				}]);
+
+				let shop: PlayerShop
+
+				// initialize shop
+				if (!results[0]) {
+					shop = PlayerShops.supplyNewShop(supplier);
+				} else {
+					let parseResult = SHOP_SCHEMAS.SHOP.safeParse(results[0].value);
+					if (!parseResult.success) {
+						throw new Error("Shop in database invalid or corrupted!");
+					}
+
+					shop = PlayerShops.refreshShop(parseResult.data, supplier);
+				}
+
+				// update refreshed shop
+				options.logger?.debug("player shop is %s", JSON.stringify(shop))
+				this.updatePlayerShop(playerId, shop);
+				return shop;
+			},
+
+			updatePlayerShop(playerId, shop) {
+				options.nk.storageWrite([{
+					collection: PLAYER_COLLECTION,
+					key: SHOP_KEY,
+					userId: playerId,
+					value: shop,
+					permissionRead: 2,
+					permissionWrite: 0
+				}]);
+			}
 		}
 	}
 }

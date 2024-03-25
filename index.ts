@@ -2,11 +2,14 @@ import { z } from "zod";
 import { matchHandler, matchmakerMatched } from "./src/match_handler";
 import { DeckSchemas } from "./src/model/decks";
 import { CollectionSchemas } from "./src/model/player_collections";
-import { dumpGameStateRPC, recipeCheckRPC } from "./src/test/test_rpcs";
-import { NakamaAdapter } from "./src/wrapper";
+import { dumpGameStateRPC, recipeCheckRPC } from "./src/controllers/test_rpcs";
+import { IDGenerator, NakamaAdapter, createSequentialIDGenerator } from "./src/wrapper";
 import { addToCollectionRPC, getCollectionRPC } from "./src/controllers/card_collection";
-import { getDecklistRPC, updateDeckRPC, setActiveDeckRPC, validateDeckRPC, addDeckRPC, deleteDeckRPC } from "./src/controllers/deck_building";
-import { createPrivateRoomRpc } from "./src/controllers/matchmaking";
+import { getDecklistRPC, updateDeckRPC, setActiveDeckRPC, validateDeckRPC, addDeckRPC, deleteDeckRPC, saveDeckRPC } from "./src/controllers/deck_building";
+import { createPrivateRoomRpc, getPreviousOngoingMatchRpc } from "./src/controllers/matchmaking";
+import { buyItemRpc, getShopRpc, getShopSupplierRpc, updateShopSupplierRpc } from "./src/controllers/item_shop";
+import { guardSystemOnly } from "./src/controllers/guard";
+import { DEFAULT_LIFETIME_SHOP_SUPPLIER } from "./src/model/stores";
 
 const InitModule: nkruntime.InitModule = function(ctx, logger, nk, initializer) {
 	logger.info("Typescript Runtime initializing");
@@ -22,12 +25,13 @@ const InitModule: nkruntime.InitModule = function(ctx, logger, nk, initializer) 
 	initializer.registerAfterAuthenticateEmail(afterAuthenticateEmail)
 	//registerTestRPCs(initializer);
 	// Registers every testing RPC functions into the server
-	initializer.registerRpc("DebugRecipeCheck", recipeCheckRPC);
+	initializer.registerRpc("DebugRecipeCheck",recipeCheckRPC);
 	initializer.registerRpc("DebugDumpState", dumpGameStateRPC);
 	initializer.registerRpc("GetCardProperties", getCardPropertiesRPC);
 	initializer.registerRpc("GetDecklist", getDecklistRPC);
-	initializer.registerRpc("AddDeck", addDeckRPC);
-	initializer.registerRpc("UpdateDeck", updateDeckRPC);
+	//initializer.registerRpc("AddDeck", addDeckRPC);
+	//initializer.registerRpc("UpdateDeck", updateDeckRPC);
+	initializer.registerRpc("SaveDeck", saveDeckRPC);
 	initializer.registerRpc("DeleteDeck", deleteDeckRPC);
 	initializer.registerRpc("ValidateDeck", validateDeckRPC);
 	initializer.registerRpc("SetActiveDeck", setActiveDeckRPC);
@@ -36,6 +40,22 @@ const InitModule: nkruntime.InitModule = function(ctx, logger, nk, initializer) 
 	initializer.registerRpc("AddToCollection", addToCollectionRPC);
 	
 	initializer.registerRpc("CreatePrivateRoom", createPrivateRoomRpc);
+	initializer.registerRpc("FindPreviousOngoingMatch", getPreviousOngoingMatchRpc);
+
+	initializer.registerRpc("GetShopSupplier", getShopSupplierRpc);
+	initializer.registerRpc("UpdateShopSupplier", updateShopSupplierRpc);
+	initializer.registerRpc("GetShop", getShopRpc);
+	initializer.registerRpc("BuyShopItem", buyItemRpc);
+
+	try {
+		updateShopSupplierRpc(ctx, logger, nk, JSON.stringify({
+			shop: DEFAULT_LIFETIME_SHOP_SUPPLIER,
+			update_mode: "add",
+			duplicate_mode: "replace"
+		}));
+	} catch (err) {
+		logger.error("Error updating default shop supplier! %s", err)
+	}
 	
 };
 

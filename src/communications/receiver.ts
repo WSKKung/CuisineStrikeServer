@@ -56,10 +56,6 @@ export function receivePlayerMessage(state: GameState, senderId: string, opCode:
 				
 		case PlayerActionCode.RESPOND_CHOICE:
 			handlePlayerActionOfType(context, dispatcher, params.type, params);
-			context.logger.debug(JSON.stringify(context.gameState))
-			if (context.gameState.pauseStatus && context.gameState.pauseStatus.reason === "player_request") {
-				context.logger.debug(JSON.stringify(context.gameState.pauseStatus.request.callback.name))
-			}
 			break;
 						
 		case PlayerActionCode.SURRENDER:

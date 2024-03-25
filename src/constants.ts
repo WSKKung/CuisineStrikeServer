@@ -7,7 +7,8 @@ export const GameConfiguration = {
 	playerTimer: {
 		turnTime: 60 * 1000,
 		matchTime: 240 * 1000
-	}
+	},
+	disconnectTimeout: 1 * 1000
 }
 
 export const DeckConfiguration = {

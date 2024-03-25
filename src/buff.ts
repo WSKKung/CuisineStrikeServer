@@ -10,7 +10,7 @@ export type CardBuff = {
 	resets: number,
 } & (
 	{
-		type: "power" | "health" | "grade" | "shield",
+		type: "power" | "health" | "grade" | "shield" | "disable_set",
 		operation: CardBuffOperation,
 		amount: number | CardBuffAmountFunction
 	}

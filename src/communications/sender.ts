@@ -6,6 +6,7 @@ import { PlayerChoiceRequest, PlayerChoiceResponse } from "../model/player_reque
 import { MatchMessageDispatcher } from "../wrapper"
 import { MatchEventCode } from "./event_codes";
 import { DishSummonProcedure } from "../cards/cook_summon_procedure";
+import { ArrayUtil } from "../utility";
 
 type AvailableTurnActionPacket = {
 	actions: Array<AvailableCardActionPacket>
@@ -150,21 +151,23 @@ export function sendCurrentMatchState(state: GameState, dispatcher: MatchMessage
 
 	let cards = Match.getCards(state, CardLocation.ANYWHERE);
 	//sendToPlayer(dispatcher, MatchEventCode.UPDATE_CARD, { cards: localizeCardData(cards, state, playerId), reason: EventReason.INIT }, playerId)
-	/*
+	
 	let ownerCardGroup = ArrayUtil.group(cards, card => Card.getOwner(card));
 	for (let { key, items } of ownerCardGroup) {
-		let owner = key
+		//let owner = key
 		let ownerGroupedCards = items
 		let locationCardGroup = ArrayUtil.group(ownerGroupedCards, card => Card.getLocation(card));
 		for (let { key, items } of locationCardGroup) {
-			let location = key;
+			//let location = key;
 			let locationGroupedCards = items;
-			state.log?.debug("send card init match state: location=" + location + " owner=" + owner + " size=" + items.length);
-			let cardPacket = localizeCardData(locationGroupedCards, state, playerId);
-			sendToPlayer(dispatcher, MatchEventCode.UPDATE_CARD, { cards: cardPacket, reason: EventReason.INIT }, playerId);
+			if (locationGroupedCards.length > 0) {
+				//state.log?.debug("send card init match state: location=" + location + " owner=" + owner + " size=" + items.length);
+				let cardPacket = localizeCardData(locationGroupedCards, state, playerId);
+				sendToPlayer(dispatcher, MatchEventCode.UPDATE_CARD, { cards: cardPacket, reason: EventReason.INIT }, playerId);
+			}
 		}
 	}
-	*/
+	
 
 	let event = {
 		turn_count: state.turnCount,
@@ -545,7 +548,6 @@ export function broadcastUpdateAvailabeActions(state: GameState, dispatcher: Mat
 				if (!recipe) {
 					continue;
 				}
-				state.log?.debug("potentialCookMaterialCards " + JSON.stringify(potentialCookMaterialCards))
 				let potentialCombinations: Array<Array<Card>> = DishSummonProcedure.getRecipeValidCombinations(recipe, card, potentialCookMaterialCards);
 				if (potentialCombinations.length > 0) {
 					actionMap[card.id] = actionMap[card.id] || { card: card.id };
