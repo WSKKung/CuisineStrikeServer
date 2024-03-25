@@ -4,6 +4,7 @@
   "description": "",
   "main": "index.ts",
   "scripts": {
+    "serve": "docker compose up --build nakama --detach",
     "build": "rollup -c",
     "type-check": "tsc --noEmit",
     "test": "jest"
