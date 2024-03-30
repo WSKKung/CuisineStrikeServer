@@ -138,15 +138,19 @@ export namespace NakamaAdapter {
 						userId: SYSTEM_USER_ID
 					}
 				]);
-				let cardData = (queryResult[0] && queryResult[0].value) || {};
-				let cardPropertyData = cardData[code];
-				if (!cardPropertyData) {
+				if (!queryResult[0]) {
 					throw new Error(`No card properties exists for card with code: ${code}`);
 				}
-				let parseResult = CardSchemas.CARD.safeParse(cardPropertyData);
+				let cardData = queryResult[0].value;
+				if (!cardData[code]) {
+					throw new Error(`No card properties exists for card with code: ${code}`);
+				}
+				
+				let parseResult = CardSchemas.CARD.safeParse(cardData[code]);
 				if (!parseResult.success) {
 					throw new Error(`Invalid card properties fopr card id: ${code}, ${parseResult.error.message}`);
 				}
+
 				let parsed = parseResult.data;
 				let baseProperties: CardProperties = {
 					code,
