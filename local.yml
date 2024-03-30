@@ -1,6 +1,0 @@
-name: nakama
-shutdown_grace_sec: 5
-logger:
-  level: "DEBUG"
-runtime:
-  path: "/nakama/data/modules/build"
