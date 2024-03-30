@@ -9,11 +9,31 @@ const RPCSchemas = {
 		update_mode: z.enum(["replace","add"]).default("add"),
 		duplicate_mode: z.enum(["replace","ignore"]).default("ignore"),
 	}),
+	deleteShopSupplierStocks: z.object({
+		stocks: z.array(z.string())
+	}),
 	getShop: z.any(),
 	buyItem: z.object({
 		stock_id: z.string(),
 		item_id: z.string()
 	})
+}
+
+export const deleteShopSupplierRpc: nkruntime.RpcFunction = (ctx, logger, nk, payload) => {
+	guardSystemOnly(ctx, logger, nk, payload);
+
+	let payloadParseResult = RPCSchemas.deleteShopSupplierStocks.safeParse(JSON.parse(payload));
+	if (!payloadParseResult.success) {
+		throw new Error("Invalid argument");
+	}
+
+	let args = payloadParseResult.data;
+	let storage = NakamaAdapter.storageAccess({ nk, logger });
+	let supplier = storage.readPlayerShopSupplier();
+	supplier.stocks = supplier.stocks.filter(stock => args.stocks.every(id_to_delete => stock.stock_id !== id_to_delete));
+	logger.debug("updated supplier: %s", JSON.stringify(supplier))
+	storage.updatePlayerShopSupplier(supplier);
+	return JSON.stringify({ success: true, shop: supplier });
 }
 
 export const updateShopSupplierRpc: nkruntime.RpcFunction = (ctx, logger, nk, payload) => {
@@ -29,10 +49,6 @@ export const updateShopSupplierRpc: nkruntime.RpcFunction = (ctx, logger, nk, pa
 	let existingSupplier = storage.readPlayerShopSupplier();
 	let newSupplier = args.shop;
 	let updatedSupplier: ShopSupplier
-
-	logger.debug("mode: update=%s duplicate=%s", args.update_mode, args.duplicate_mode)
-	logger.debug("existing supplier: %s", JSON.stringify(existingSupplier))
-	logger.debug("new supplier: %s", JSON.stringify(newSupplier))
 
 	switch (args.update_mode) {
 		case "replace":
