@@ -5,12 +5,15 @@ export const createPrivateRoomRpc: nkruntime.RpcFunction = function(ctx, logger,
 
 export const getPreviousOngoingMatchRpc: nkruntime.RpcFunction = function(ctx, logger, nk, payload) {
 	let account = nk.accountGetId(ctx.userId);
-	let matchId = account.user.metadata.ongoing_match_id;
+	let meta = account.user.metadata;
+	let matchId = meta.ongoing_match_id;
 	if (matchId) {
 		let match = nk.matchGet(matchId);
 		if (match) {
 			return JSON.stringify({ success: true, match_id: matchId });
 		}
 	}
+	meta.ongoing_match_id = undefined;
+	nk.accountUpdateId(ctx.userId, null, null, null, null, null, null, meta);
 	return JSON.stringify({ success: true, match_id: null });
 }
