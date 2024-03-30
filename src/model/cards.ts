@@ -71,15 +71,13 @@ export type Card = {
 
 export const CardSchemas = {
 	CARD: z.object({
-		name: z.string(),
-		description: z.string(),
-		type: z.number().int().min(0),
-		grade: z.number().int().min(0).optional(),
-		classes: z.number().int().min(0).optional(),
-		power: z.number().int().min(0).optional(),
-		health: z.number().int().min(0).optional(),
-		bonusPower: z.number().int().min(0).optional(),
-		bonusHealth: z.number().int().min(0).optional()
+		type: z.number().int(),
+		grade: z.number().int().default(0),
+		classes: z.number().int().default(0),
+		power: z.number().int().default(0),
+		health: z.number().int().default(0),
+		bonusPower: z.number().int().default(0),
+		bonusHealth: z.number().int().default(0)
 	})
 }
 
