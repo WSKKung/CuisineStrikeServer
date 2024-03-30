@@ -102,33 +102,235 @@ export const SHOP_SCHEMAS = {
 export const DEFAULT_LIFETIME_SHOP_SUPPLIER: ShopSupplier = {
 	stocks: [
 		{
-			stock_id: "basic_cards",
+			stock_id: "rare_ingredients",
 			type: "unlimited",
-			available_since: new Date(2024, 2, 23).getTime(),
+			available_since: new Date().getTime(),
+			supplier: {
+				type: "random",
+				roll_count: 3,
+				pools: [
+					{
+						item_id: "card_tumblewheats",
+						type: "card",
+						code: 18,
+						amount: 3,
+						price: 120,
+					},
+					{
+						item_id: "card_dreamy_shleep",
+						type: "card",
+						code: 19,
+						amount: 3,
+						price: 120,
+					},
+					{
+						item_id: "card_ufyolk",
+						type: "card",
+						code: 20,
+						amount: 3,
+						price: 120,
+					},
+					{
+						item_id: "card_wild_cabmage",
+						type: "card",
+						code: 33,
+						amount: 3,
+						price: 120,
+					},
+					{
+						item_id: "card_spirit_of_soya_lake",
+						type: "card",
+						code: 42,
+						amount: 3,
+						price: 120,
+					}
+				]
+			}
+		},
+		{
+			stock_id: "basic_ingredient_dishes",
+			type: "unlimited",
+			available_since: new Date().getTime(),
 			supplier: {
 				type: "static",
 				items: [
 					{
-						item_id: "card_1",
+						item_id: "card_bread_gardna",
 						type: "card",
-						code: 1,
-						amount: 1,
+						code: 4,
+						amount: 3,
 						price: 200,
 					},
 					{
-						item_id: "card_2",
+						item_id: "card_smoked_bacon_boar",
 						type: "card",
-						code: 1,
-						amount: 1,
+						code: 13,
+						amount: 3,
 						price: 200,
 					},
 					{
-						item_id: "card_3",
+						item_id: "card_omelette_maiden",
 						type: "card",
-						code: 1,
-						amount: 1,
+						code: 20,
+						amount: 3,
 						price: 200,
-					}
+					},
+					{
+						item_id: "card_meowzarella",
+						type: "card",
+						code: 43,
+						amount: 3,
+						price: 200,
+					},
+					{
+						item_id: "card_summoning_crust",
+						type: "card",
+						code: 45,
+						amount: 3,
+						price: 200,
+					},
+				]
+			}
+		},
+		{
+			stock_id: "basic_support_cards",
+			type: "unlimited",
+			available_since: new Date().getTime(),
+			supplier: {
+				type: "random",
+				roll_count: 5,
+				pools: [
+					{
+						item_id: "card_chef_blessing",
+						type: "card",
+						code: 9,
+						amount: 3,
+						price: 150,
+					},
+					{
+						item_id: "card_recipe_recall",
+						type: "card",
+						code: 10,
+						amount: 3,
+						price: 150,
+					},
+					{
+						item_id: "card_rat_attack",
+						type: "card",
+						code: 28,
+						amount: 3,
+						price: 150,
+					},
+					{
+						item_id: "card_mold_invasion",
+						type: "card",
+						code: 27,
+						amount: 3,
+						price: 150,
+					},
+					{
+						item_id: "card_thermoheal_reheat",
+						type: "card",
+						code: 39,
+						amount: 3,
+						price: 150,
+					},
+					{
+						item_id: "card_piercing_strike",
+						type: "card",
+						code: 49,
+						amount: 3,
+						price: 150,
+					},
+					{
+						item_id: "card_overheat",
+						type: "card",
+						code: 50,
+						amount: 3,
+						price: 150,
+					},
+				]
+			}
+		},
+		{
+			stock_id: "rare_dishes",
+			type: "unlimited",
+			available_since: new Date().getTime(),
+			restock_in_days: 1,
+			supplier: {
+				type: "random",
+				roll_count: 3,
+				pools: [
+					{
+						item_id: "card_hamburger_devil",
+						type: "card",
+						code: 5,
+						amount: 1,
+						price: 500,
+					},
+					{
+						item_id: "card_bacon_and_egg_warrior",
+						type: "card",
+						code: 7,
+						amount: 1,
+						price: 500,
+					},
+					{
+						item_id: "card_quiche_gardna",
+						type: "card",
+						code: 22,
+						amount: 1,
+						price: 500,
+					},
+					{
+						item_id: "card_beef_cannon_wellington",
+						type: "card",
+						code: 23,
+						amount: 1,
+						price: 500,
+					},
+					{
+						item_id: "card_green_saladsaint",
+						type: "card",
+						code: 34,
+						amount: 1,
+						price: 500,
+					},
+					{
+						item_id: "card_egg_saladsaint",
+						type: "card",
+						code: 35,
+						amount: 1,
+						price: 500,
+					},
+					{
+						item_id: "card_high_caesar_saladsaint",
+						type: "card",
+						code: 36,
+						amount: 1,
+						price: 900,
+					},
+					{
+						item_id: "card_king_ratatouille",
+						type: "card",
+						code: 38,
+						amount: 1,
+						price: 500,
+					},
+					{
+						item_id: "card_pizzaestro_grande_margherita",
+						type: "card",
+						code: 46,
+						amount: 1,
+						price: 900,
+					},
+					{
+						item_id: "card_pizzaestro_pepperoni",
+						type: "card",
+						code: 47,
+						amount: 1,
+						price: 500,
+					},
 				]
 			}
 		}
@@ -221,7 +423,6 @@ export namespace PlayerShops {
 				newShop.stocks.push(newStock);
 			}
 		}
-
 
 		return newShop;
 	}
