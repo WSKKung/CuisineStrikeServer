@@ -7,7 +7,7 @@ import { IDGenerator, NakamaAdapter, createSequentialIDGenerator } from "./src/w
 import { addToCollectionRPC, getCollectionRPC } from "./src/controllers/card_collection";
 import { getDecklistRPC, updateDeckRPC, setActiveDeckRPC, validateDeckRPC, addDeckRPC, deleteDeckRPC, saveDeckRPC } from "./src/controllers/deck_building";
 import { createPrivateRoomRpc, getPreviousOngoingMatchRpc } from "./src/controllers/matchmaking";
-import { buyItemRpc, getShopRpc, getShopSupplierRpc, updateShopSupplierRpc } from "./src/controllers/item_shop";
+import { buyItemRpc, deleteShopSupplierRpc, getShopRpc, getShopSupplierRpc, updateShopSupplierRpc } from "./src/controllers/item_shop";
 import { guardSystemOnly } from "./src/controllers/guard";
 import { DEFAULT_LIFETIME_SHOP_SUPPLIER } from "./src/model/stores";
 
@@ -44,6 +44,7 @@ const InitModule: nkruntime.InitModule = function(ctx, logger, nk, initializer) 
 
 	initializer.registerRpc("GetShopSupplier", getShopSupplierRpc);
 	initializer.registerRpc("UpdateShopSupplier", updateShopSupplierRpc);
+	initializer.registerRpc("DeleteShopSupplierStock", deleteShopSupplierRpc);
 	initializer.registerRpc("GetShop", getShopRpc);
 	initializer.registerRpc("BuyShopItem", buyItemRpc);
 
