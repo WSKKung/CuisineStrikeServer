@@ -978,8 +978,25 @@ export namespace Match {
 			if (isCardCanAttack(state, event.attackingCard)) {
 				let targetPower = Card.getPower(event.targetCard);
 				let attackerPower = Card.getPower(event.attackingCard);
+				let targetHealth = Card.getHealth(event.targetCard)
+				let attackerHealth = Card.getHealth(event.attackingCard)
 				damage(state, event.context, [event.attackingCard], targetPower);
-				damage(state, event.context, [event.targetCard], attackerPower);				
+				damage(state, event.context, [event.targetCard], attackerPower);
+
+				let pierceDamage = attackerPower - targetHealth;
+				if (pierceDamage > 0) {
+					let pierceBuffs = getBuffs(state, event.attackingCard).filter(buff => buff.type === "pierce");
+					if (pierceBuffs.length > 0) {
+						damagePlayer(state, event.context, Card.getOwner(event.targetCard), pierceDamage);
+					}
+				}
+				let opponentPierceDamage = targetPower - attackerHealth;
+				if (opponentPierceDamage > 0) {
+					let pierceBuffs = getBuffs(state, event.targetCard).filter(buff => buff.type === "pierce");
+					if (pierceBuffs.length > 0) {
+						damagePlayer(state, event.context, Card.getOwner(event.attackingCard), opponentPierceDamage);
+					}
+				}
 			}
 		} catch (err) {
 

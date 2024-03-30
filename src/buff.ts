@@ -10,7 +10,7 @@ export type CardBuff = {
 	resets: number,
 } & (
 	{
-		type: "power" | "health" | "grade" | "shield" | "disable_set",
+		type: "power" | "health" | "grade" | "shield" | "pierce" | "disable_set",
 		operation: CardBuffOperation,
 		amount: number | CardBuffAmountFunction
 	}
@@ -70,4 +70,5 @@ export namespace CardBuff {
 		let { get, set } = getBuffTargetGetterSetter(buff);
 		set(card, op(get(card), amount))
 	}
+
 }
