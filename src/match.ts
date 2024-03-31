@@ -968,8 +968,13 @@ export namespace Match {
 		updateCard(state, card)
 	}
 
-	export function removeCardAttackCount(state: GameState, card: Card) {
-		card.attacks -= 1;
+	export function addCardAttackCount(state: GameState, card: Card, attacks: number = 1) {
+		card.attacks += attacks;
+		updateCard(state, card)
+	}
+
+	export function removeCardAttackCount(state: GameState, card: Card, attacks = 1) {
+		card.attacks -= attacks;
 		if (card.attacks < 0) {
 			card.attacks = 0;
 		}
