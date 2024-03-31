@@ -415,6 +415,25 @@ export namespace Match {
 		return hurtEvent.amount;
 	}
 
+	export async function payHP(state: GameState, context: GameEventContext, playerId: string, amount: number): Promise<number> {
+		let payEvent: GameEvent = {
+			id: newUUID(state), 
+			type: "update_hp", 
+			context: context,
+			player: playerId, 
+			amount: -amount
+		};
+
+		payEvent = await pushEvent(state, payEvent);
+		let previousHP = getHP(state, payEvent.player);
+		if (previousHP > amount) {
+			setHP(state, payEvent.player,previousHP + payEvent.amount);
+			return payEvent.amount;
+		}
+
+		return 0;
+	}
+
 	export function setPresence(state: GameState, playerId: string, presence: nkruntime.Presence): void {
 		getPlayer(state, playerId).presence = presence;
    	}
@@ -941,6 +960,11 @@ export namespace Match {
 	
 	export function resetCardAttackCount(state: GameState, card: Card) {
 		card.attacks = 1;
+		updateCard(state, card)
+	}
+
+	export function setCardAttackCount(state: GameState, card: Card, attacks: number) {
+		card.attacks = attacks;
 		updateCard(state, card)
 	}
 
