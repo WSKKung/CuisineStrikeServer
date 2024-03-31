@@ -165,6 +165,214 @@
 						}
 					}
 				]
+			},
+			"34": {
+				"slots": [
+					{
+						"min": 1,
+						"max": 1,
+						"condition": {
+							"type": "check_code",
+							"code": 30
+						}
+					},
+					{
+						"min": 1,
+						"max": 1,
+						"condition": {
+							"type": "check_classes",
+							"classes": 16
+						}
+					}
+				]
+			},
+			"35": {
+				"slots": [
+					{
+						"min": 1,
+						"max": 1,
+						"condition": {
+							"type": "check_classes",
+							"classes": 8
+						}
+					},
+					{
+						"min": 1,
+						"max": 1,
+						"condition": {
+							"type": "check_classes",
+							"classes": 16
+						}
+					}
+				]
+			},
+			"36": {
+				"slots": [
+					{
+						"min": 1,
+						"max": 1,
+						"condition": {
+							"type": "check_classes",
+							"classes": 8
+						}
+					},
+					{
+						"min": 1,
+						"max": 1,
+						"condition": {
+							"type": "check_classes",
+							"classes": 4
+						}
+					},
+					{
+						"min": 1,
+						"max": 2,
+						"condition": {
+							"type": "check_classes",
+							"classes": 16
+						}
+					}
+				]
+			},
+			"38": {
+				"slots": [
+					{
+						"min": 1,
+						"max": 2,
+						"condition": {
+							"type": "check_classes",
+							"classes": 16
+						}
+					}
+				]
+			},
+			"43": {
+				"slots": [
+					{
+						"min": 1,
+						"max": 2,
+						"condition": {
+							"type": "and",
+							"conditions": [
+								{
+									"type": "check_classes",
+									"classes": 64
+								},
+								{
+									"type": "not",
+									"condition": {
+										"type": "check_card_type",
+										"card_type": 1
+									}
+								}
+							]
+						}
+					}
+				]
+			},
+			"44": {
+				"slots": [
+					{
+						"min": 1,
+						"max": 2,
+						"condition": {
+							"type": "and",
+							"conditions": [
+								{
+									"type": "check_classes",
+									"classes": 64
+								},
+								{
+									"type": "not",
+									"condition": {
+										"type": "check_card_type",
+										"card_type": 1
+									}
+								}
+							]
+						}
+					}
+				]
+			},
+			"45": {
+				"slots": [
+					{
+						"min": 1,
+						"max": 2,
+						"condition": {
+							"type": "and",
+							"conditions": [
+								{
+									"type": "check_classes",
+									"classes": 2
+								},
+								{
+									"type": "not",
+									"condition": {
+										"type": "check_card_type",
+										"card_type": 1
+									}
+								}
+							]
+						}
+					}
+				]
+			},
+			"46": {
+				"slots": [
+					{
+						"min": 1,
+						"max": 1,
+						"condition": {
+							"type": "check_code",
+							"code": 37
+						}
+					},
+					{
+						"min": 1,
+						"max": 1,
+						"condition": {
+							"type": "check_code",
+							"code": 45
+						}
+					},
+					{
+						"min": 1,
+						"max": 1,
+						"condition": {
+							"type": "check_classes",
+							"classes": 64
+						}
+					}
+				]
+			},
+			"47": {
+				"slots": [
+					{
+						"min": 1,
+						"max": 1,
+						"condition": {
+							"type": "check_code",
+							"code": 45
+						}
+					},
+					{
+						"min": 1,
+						"max": 1,
+						"condition": {
+							"type": "check_classes",
+							"classes": 2
+						}
+					},
+					{
+						"min": 0,
+						"max": 1,
+						"condition": {
+							"type": "check_classes",
+							"classes": 64
+						}
+					}
+				]
 			}
 		}
 	}

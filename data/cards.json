@@ -246,7 +246,7 @@
 				"grade": 1
 			},
 			"43": {
-				"type": 1,
+				"type": 3,
 				"classes": 64,
 				"grade": 1,
 				"power": 2,
@@ -255,7 +255,7 @@
 				"bonusHealth": 2
 			},
 			"44": {
-				"type": 1,
+				"type": 3,
 				"classes": 64,
 				"grade": 2,
 				"power": 2,
@@ -264,7 +264,7 @@
 				"bonusHealth": 1
 			},
 			"45": {
-				"type": 1,
+				"type": 3,
 				"classes": 64,
 				"grade": 1,
 				"power": 0,
