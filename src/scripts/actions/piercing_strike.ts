@@ -17,7 +17,7 @@ const PIERCING_STRIKE_EFFECT: CardEffect = {
 
 	async activate({state, card, player}) {
 		Match.setSelectionHint(state, "Select a target card")
-		let targetOptions = Match.findCards(state, card => targetFilter(card, state), CardLocation.TRASH, player);
+		let targetOptions = Match.findCards(state, card => targetFilter(card, state), CardLocation.SERVE_ZONE, player);
 		let targetChoice = await Match.makePlayerSelectCards(state, { player: player, reason: EventReason.EFFECT }, player, targetOptions, 1, 1);
 		Match.addBuff(state, { player, reason: EventReason.EFFECT }, targetChoice, {
 			id: Match.newUUID(state),
