@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { ZodError, z } from "zod";
 import { matchHandler, matchmakerMatched } from "./src/match_handler";
 import { DeckSchemas } from "./src/model/decks";
 import { CollectionSchemas } from "./src/model/player_collections";
@@ -87,15 +87,12 @@ const beforeAuthenticateLogin: nkruntime.BeforeHookFunction<nkruntime.Authentica
 }
 
 const afterAuthenticateEmail: nkruntime.AfterHookFunction<nkruntime.Session, nkruntime.AuthenticateEmailRequest> = function(ctx, logger, nk, data, request) {
-	
-	//logger.debug("debug after auth: data=%s, req=%s, ctx=%s", JSON.stringify(data), JSON.stringify(request), JSON.stringify(ctx));
-	let currentUsers = nk.usersGetId([ ctx.userId ]);
-	//let account = nk.accountGetId(ctx.userId);
-	//let userMetadata = account.user.metadata;
-	if (currentUsers.length > 0) {
-		logger.debug("users exists: %s", JSON.stringify(currentUsers))
-		//nk.sessionLogout(currentUsers[0].userId);
-	}//
+	let storage = NakamaAdapter.storageAccess({ nk, logger });
+	// give coin to new user
+	if (request.create && nk.usersGetId([ctx.userId]).length == 0) {
+		const STARTING_COIN = 1000;
+		storage.givePlayerCoin(ctx.userId, STARTING_COIN);
+	}
 }
 
 // Reference InitModule to avoid it getting removed on build
