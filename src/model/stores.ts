@@ -102,6 +102,40 @@ export const SHOP_SCHEMAS = {
 export const DEFAULT_LIFETIME_SHOP_SUPPLIER: ShopSupplier = {
 	stocks: [
 		{
+			stock_id: "high_grade_ingredients",
+			type: "unlimited",
+			available_since: new Date().getTime(),
+			supplier: {
+				type: "static",
+				items: [
+					{
+						item_id: "card_cow",
+						type: "card",
+						code: 1,
+						price: 80
+					},
+					{
+						item_id: "card_rare_wheat",
+						type: "card",
+						code: 12,
+						price: 80
+					},
+					{
+						item_id: "card_rare_barley",
+						type: "card",
+						code: 17,
+						price: 80
+					},
+					{
+						item_id: "card_large_egg",
+						type: "card",
+						code: 21,
+						price: 80
+					}
+				]
+			}
+		},
+		{
 			stock_id: "rare_ingredients",
 			type: "unlimited",
 			available_since: new Date().getTime(),
@@ -333,7 +367,73 @@ export const DEFAULT_LIFETIME_SHOP_SUPPLIER: ShopSupplier = {
 					},
 				]
 			}
-		}
+		},
+		{
+			stock_id: "veggie_and_dairy_common_expansion",
+			type: "unlimited",
+			available_since: new Date().getTime(),
+			supplier: {
+				type: "static",
+				items: [
+					{
+						item_id: "card_lettuce",
+						type: "card",
+						code: 29,
+						price: 20
+					},
+					{
+						item_id: "card_rare_lettuce",
+						type: "card",
+						code: 30,
+						price: 80
+					},
+					{
+						item_id: "card_cabbage",
+						type: "card",
+						code: 31,
+						price: 20
+					},
+					{
+						item_id: "card_rare_cabbage",
+						type: "card",
+						code: 32,
+						price: 80
+					},
+					{
+						item_id: "card_tomatoad",
+						type: "card",
+						code: 37,
+						price: 40
+					},
+					{
+						item_id: "card_milk",
+						type: "card",
+						code: 40,
+						price: 20
+					},
+					{
+						item_id: "card_enriched_milk",
+						type: "card",
+						code: 41,
+						price: 80
+					},
+					{
+						item_id: "card_green_saladsaint",
+						type: "card",
+						code: 34,
+						amount: 1,
+						price: 400
+					},
+					{
+						item_id: "card_meowzzarela",
+						type: "card",
+						code: 43,
+						amount: 1,
+						price: 400
+					}
+				]
+			}
+		},
 	]
 }
 
