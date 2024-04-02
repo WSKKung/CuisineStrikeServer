@@ -288,8 +288,9 @@ export function broadcastMatchEvent(state: GameState, dispatcher: MatchMessageDi
 			Match.forEachPlayers(state, playerId => {
 				let packet = {
 					attacker_card: localizeSingleCardData(event.attackingCard, state, playerId),
+					is_direct_attack: event.isDirect,
 					target_card: event.isDirect ? undefined : localizeSingleCardData(event.targetCard, state, playerId),
-					is_direct_attack: event.isDirect
+					target_player_is_you: event.isDirect ? playerId === event.targetPlayer : undefined,
 				};
 				sendToPlayer(dispatcher, MatchEventCode.ATTACK, packet, playerId);
 			});
