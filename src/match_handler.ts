@@ -194,11 +194,6 @@ const matchLoop: nkruntime.MatchLoopFunction = function(ctx, logger, nk, dispatc
 
 							// select random cards from deck to be in the initial hand
 							handCards = deckCards.splice(0, GameConfiguration.initialHandSize);
-							for (let code of [11,25]) {
-								let cardId = idGen.uuid();
-								let cardProps = gameStorageAccess.readCardProperty(code);
-								handCards.push(Card.create(cardId, code, id, cardProps));
-							}
 
 						} catch (error: any) {
 							logger.error(`Main deck initialization for player %s failed: %s`, id, error.message);
