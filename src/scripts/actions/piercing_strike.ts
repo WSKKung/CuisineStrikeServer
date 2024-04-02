@@ -6,10 +6,10 @@ import { EventReason } from "../../model/events";
 
 function targetFilter(card: Card, state: GameState) {
 	// target buff must not already has pierce
-	return Card.hasType(card, CardType.DISH) && !Match.getBuffs(state, card).some(buff => buff.type === "pierce")
+	return Card.hasType(card, CardType.DISH) && !Match.getBuffs(state, card).some(buff => buff.type === "pierce");
 }
 
-const POT_OF_GLUTTONY_EFFECT: CardEffect = {
+const PIERCING_STRIKE_EFFECT: CardEffect = {
 	type: "activate",
 	condition({state, card, player}) {
 		return Match.countFilterCards(state, card => targetFilter(card, state), CardLocation.SERVE_ZONE, player) > 0;
@@ -30,4 +30,4 @@ const POT_OF_GLUTTONY_EFFECT: CardEffect = {
 	}
 };
 
-export default POT_OF_GLUTTONY_EFFECT;
+export default PIERCING_STRIKE_EFFECT;

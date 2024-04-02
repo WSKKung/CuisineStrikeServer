@@ -9,7 +9,7 @@ function targetFilter(card: Card, state: GameState) {
 	return Card.hasType(card, CardType.DISH)
 }
 
-const POT_OF_GLUTTONY_EFFECT: CardEffect = {
+const THERMOHEAL_REHEAT_EFFECT: CardEffect = {
 	type: "activate",
 	condition({state, card, player}) {
 		return Match.countFilterCards(state, card => targetFilter(card, state), CardLocation.SERVE_ZONE, player) > 0;
@@ -31,4 +31,4 @@ const POT_OF_GLUTTONY_EFFECT: CardEffect = {
 	}
 };
 
-export default POT_OF_GLUTTONY_EFFECT;
+export default THERMOHEAL_REHEAT_EFFECT;
