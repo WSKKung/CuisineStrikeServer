@@ -1175,6 +1175,7 @@ export namespace Match {
 
 
 	export async function makePlayerSelectCards(state: GameState, context: GameEventContext, playerId: string, cards: Array<Card>, min: number, max: number = min): Promise<Array<Card>> {
+		if (cards.length <= 0) return [];
 		let hintMsg = popSelectionHint(state);
 		return new Promise((resolve) => {
 			let newRequest: PlayerChoiceRequestCards = {
