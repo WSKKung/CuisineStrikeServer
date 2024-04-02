@@ -136,6 +136,10 @@ const matchLeave: nkruntime.MatchLeaveFunction = function(ctx, logger, nk, dispa
 		broadcastMatchEnd(gameState, matchDispatcher)
 		return null;
 	}
+	// end empty room
+	else if (Match.getActivePlayers(gameState).length <= 0) {
+		return null;
+	}
 
 	return {
 		state: {
