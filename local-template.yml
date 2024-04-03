@@ -6,5 +6,8 @@ runtime:
   path: "/nakama/data/modules/build"
   js_read_only_globals: false
   read_only_globals: false
+session:
+  single_socket: true
+  single_match: true
 console:
   port: 7351
