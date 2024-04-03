@@ -1,10 +1,10 @@
 import { ZodError, z } from "zod";
 import { matchHandler, matchmakerMatched } from "./src/match_handler";
-import { DeckSchemas } from "./src/model/decks";
+import { DeckSchemas, validateDeck } from "./src/model/decks";
 import { CollectionSchemas } from "./src/model/player_collections";
 import { dumpGameStateRPC, recipeCheckRPC } from "./src/controllers/test_rpcs";
 import { IDGenerator, NakamaAdapter, createSequentialIDGenerator } from "./src/wrapper";
-import { addToCollectionRPC, getCollectionRPC } from "./src/controllers/card_collection";
+import { addCoinRPC, addToCollectionRPC, getCollectionRPC } from "./src/controllers/card_collection";
 import { getDecklistRPC, updateDeckRPC, setActiveDeckRPC, validateDeckRPC, addDeckRPC, deleteDeckRPC, saveDeckRPC } from "./src/controllers/deck_building";
 import { createPrivateRoomRpc, getPreviousOngoingMatchRpc } from "./src/controllers/matchmaking";
 import { buyItemRpc, deleteShopSupplierRpc, getShopRpc, getShopSupplierRpc, updateShopSupplierRpc } from "./src/controllers/item_shop";
@@ -14,6 +14,7 @@ import { DEFAULT_LIFETIME_SHOP_SUPPLIER } from "./src/model/stores";
 const InitModule: nkruntime.InitModule = function(ctx, logger, nk, initializer) {
 	logger.info("Typescript Runtime initializing");
 	initializer.registerRtBefore("MatchmakerAdd", beforeMacthmakerAdd);
+	initializer.registerRtBefore("MatchJoin", beforeMatchJoin);
 	logger.info("BeforeMatchmakerAdd hook registered");
 	initializer.registerMatch("lobby", matchHandler);
 	logger.info("MatchHandler registered");
@@ -38,6 +39,7 @@ const InitModule: nkruntime.InitModule = function(ctx, logger, nk, initializer) 
 	
 	initializer.registerRpc("GetCollection", getCollectionRPC);
 	initializer.registerRpc("AddToCollection", addToCollectionRPC);
+	initializer.registerRpc("AddCoin", addCoinRPC);
 	
 	initializer.registerRpc("CreatePrivateRoom", createPrivateRoomRpc);
 	initializer.registerRpc("FindPreviousOngoingMatch", getPreviousOngoingMatchRpc);
@@ -71,10 +73,30 @@ const getCardPropertiesRPC: nkruntime.RpcFunction = function(ctx, logger, nk, pa
 }
 // Modify client matchmaking request
 const beforeMacthmakerAdd: nkruntime.RtBeforeHookFunction<nkruntime.EnvelopeMatchmakerAdd> = function(ctx, logger, nk, envelope) {
+	let storage = NakamaAdapter.storageAccess({ nk, logger });
+	let currentDeck = storage.readPlayerActiveDeck(ctx.userId);
+	// disallow invalid deck
+	let deckValidateResult = validateDeck(currentDeck);
+	if (!deckValidateResult.valid) {
+		return;
+	}
+
 	envelope.matchmakerAdd.minCount = 2;
 	envelope.matchmakerAdd.maxCount = 2;
 	return envelope;
 };
+
+const beforeMatchJoin: nkruntime.RtBeforeHookFunction<nkruntime.EnvelopeMatchJoin> = function(ctx, logger, nk, envelope) {
+	let storage = NakamaAdapter.storageAccess({ nk, logger });
+	let currentDeck = storage.readPlayerActiveDeck(ctx.userId);
+	// disallow invalid deck
+	let deckValidateResult = validateDeck(currentDeck);
+	if (!deckValidateResult.valid) {
+		return;
+	}
+
+	return envelope;
+}
 
 const beforeAuthenticateLogin: nkruntime.BeforeHookFunction<nkruntime.AuthenticateEmailRequest> = function(ctx, logger, nk, data) {
 	// disconnect other session first
