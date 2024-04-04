@@ -20,7 +20,7 @@ export const DeckConfiguration = {
 		min: 10,
 		max: 15
 	},
-	maxDuplicates: 5
+	maxDuplicates: 3
 }
 
 export const DecklistConfiguration = {
