@@ -392,11 +392,15 @@ const matchLoop: nkruntime.MatchLoopFunction = function(ctx, logger, nk, dispatc
 			// grant play rewards
 			for (let playerId of players) {
 				let coinReward: number = 0;
+				let metadata = nk.accountGetId(playerId).user.metadata;
 				if (Match.isWinner(gameState, playerId)) {
 					coinReward = Utility.randomIntRange(120, 181);
+					metadata.wins = (metadata.wins || 0) + 1
 				} else if (Match.getEndReason(gameState) != EndResultStringKeys.DISCONNECTED) {
 					coinReward = Utility.randomIntRange(40, 61);
+					metadata.losses = (metadata.losses || 0) + 1
 				}
+				nk.accountUpdateId(playerId, null, null, null, null, null, null, metadata);
 				gameStorageAccess.givePlayerCoin(playerId, coinReward);
 			}
 
