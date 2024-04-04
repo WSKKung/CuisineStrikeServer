@@ -111,7 +111,7 @@ const beforeAuthenticateLogin: nkruntime.BeforeHookFunction<nkruntime.Authentica
 const afterAuthenticateEmail: nkruntime.AfterHookFunction<nkruntime.Session, nkruntime.AuthenticateEmailRequest> = function(ctx, logger, nk, data, request) {
 	let storage = NakamaAdapter.storageAccess({ nk, logger });
 	// give coin to new user
-	if (request.create && nk.usersGetId([ctx.userId]).length == 0) {
+	if (request.create) {
 		const STARTING_COIN = 1000;
 		storage.givePlayerCoin(ctx.userId, STARTING_COIN);
 	}
