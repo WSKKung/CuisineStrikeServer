@@ -80,7 +80,7 @@ function validateParams<T extends ActionType>(type: T, next: TypedActionHandleFu
 			return next(context, result);
 		}
 		catch (error: any) {
-			context.gameState.log?.debug(error.message)
+			context.gameState.logger?.debug(error.message)
 			return { success: false, data: { reason: "INVALID_ARGUMENT" } };
 		}
 	};
@@ -131,7 +131,7 @@ const setIngredientHandler: ActionHandleFunction<PlayerActionParamsSetIngredient
 	}
 
 	// check material cost
-	state.log!.debug("Player attempted to set %s with min cost %d", JSON.stringify(cardToBeSet!), requiredCost)
+	state.logger!.debug("Player attempted to set %s with min cost %d", JSON.stringify(cardToBeSet!), requiredCost)
 	let combinedCost: number = materials.length; //.map(card => Card.getGrade(card)).reduce((prev, cur) => prev + cur, 0);
 	// TODO: allow exceeded cost, but disallow selecting more materials than minimum (e.g. player cannot select combination of grade 3 or higher if player `can` select combination of grade 2 for grade 3 ingredient)
 	if (combinedCost !== requiredCost) {
@@ -313,7 +313,7 @@ const activateActionCardHandler: ActionHandleFunction<PlayerActionParamsActivate
 		return { success: false, data: { reason: "TARGET_CARD_INVALID" } };
 	}
 	
-	state.log?.debug("Player attempted to activate cards with code: %d", Card.getCode(activatedCard))
+	state.logger?.debug("Player attempted to activate cards with code: %d", Card.getCode(activatedCard))
 
 	// check activation condition
 	if (!Match.isCardCanActivateAbility(state, activatedCard)) {

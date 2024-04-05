@@ -131,7 +131,7 @@ function localizeSingleCardData(card: Card, state: GameState, playerId: string, 
 
 function localizeCardData(cards: Array<Card>, state: GameState, playerId: string, force_mode: "public" | "private" | "none" = "none"): Array<CardPacket> {
 	if (!cards) {
-		state.log?.error(`${DEBUG.EVENT.type} provided null cards!`)
+		state.logger?.error(`${DEBUG.EVENT.type} provided null cards!`)
 		return []
 	}
 	return cards.map(card => localizeSingleCardData(card, state, playerId, force_mode));

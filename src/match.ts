@@ -1314,9 +1314,9 @@ export namespace Match {
 	export function getResponseTriggerAbilities(state: GameState, events: Array<GameEvent>, resolutionPhase: "before" | "after"): Array<{ event: GameEvent, effect: CardEffectInstance }> {
 		let applicableTriggerEffects = Object.values(state.effects).flat(1).map((e) => {
 			if (e.effect.type === "trigger" && e.effect.resolutionPhase === resolutionPhase) {
-				state.logger?.debug("getResponseTriggerAbilities checking for effect instance %s", JSON.stringify(e));
+				//state.logger?.debug("getResponseTriggerAbilities checking for effect instance %s", JSON.stringify(e));
 				for (let event of events) {
-					state.logger?.debug(" - checking against event %s", JSON.stringify(event));
+					//state.logger?.debug(" - checking against event %s", JSON.stringify(event));
 					if (isTriggerAbilityUseable(state, e.card.owner, e, event)) {
 						return { event: event, effect: e };
 					}

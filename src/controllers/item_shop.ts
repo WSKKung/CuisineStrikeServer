@@ -31,7 +31,6 @@ export const deleteShopSupplierRpc: nkruntime.RpcFunction = (ctx, logger, nk, pa
 	let storage = NakamaAdapter.storageAccess({ nk, logger });
 	let supplier = storage.readPlayerShopSupplier();
 	supplier.stocks = supplier.stocks.filter(stock => args.stocks.every(id_to_delete => stock.stock_id !== id_to_delete));
-	logger.debug("updated supplier: %s", JSON.stringify(supplier))
 	storage.updatePlayerShopSupplier(supplier);
 	return JSON.stringify({ success: true, shop: supplier });
 }
@@ -77,7 +76,6 @@ export const updateShopSupplierRpc: nkruntime.RpcFunction = (ctx, logger, nk, pa
 			break;
 	}
 
-	logger.debug("updated supplier: %s", JSON.stringify(updatedSupplier))
 	storage.updatePlayerShopSupplier(updatedSupplier);
 	return JSON.stringify({ success: true, shop: updatedSupplier });
 }
