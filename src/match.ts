@@ -17,6 +17,7 @@ export interface GameResult {
 
 export type EventQueue = Array<{
 	event: GameEvent
+	canResolve(): boolean
 	resolve(): void
 	reject(): void
 	responded: boolean
@@ -46,7 +47,7 @@ export interface GamePauseStatusSyncReady {
 
 export interface GameState extends nkruntime.MatchState {
 	//TODO: Decoupling GameState from Nakama state altogether
-	log?: nkruntime.Logger,
+	logger?: nkruntime.Logger,
 	nk?: nkruntime.Nakama,
 	players: {[id: string]: PlayerData | undefined},
 	cards: {[id: CardID]: Card},
@@ -221,10 +222,16 @@ export namespace Match {
 	 * @param event 
 	 * @returns 
 	 */
-	export async function pushEvent<Event extends GameEvent>(state: GameState, event: Event): Promise<Event> {
+	export async function pushEvent<Event extends GameEvent>(state: GameState, event: Event, resolutionCondition?: ((e: Event) => boolean) | undefined): Promise<Event> {
 		let promise: Promise<Event> = new Promise((resolvePromise, rejectPromise) => {
 			state.eventQueue.push({
 				event: event,
+				canResolve() {
+					if (resolutionCondition) {
+						return resolutionCondition(event);
+					}
+					return true;
+				},
 				resolve() {
 					resolvePromise(event)
 				},
@@ -1307,7 +1314,9 @@ export namespace Match {
 	export function getResponseTriggerAbilities(state: GameState, events: Array<GameEvent>, resolutionPhase: "before" | "after"): Array<{ event: GameEvent, effect: CardEffectInstance }> {
 		let applicableTriggerEffects = Object.values(state.effects).flat(1).map((e) => {
 			if (e.effect.type === "trigger" && e.effect.resolutionPhase === resolutionPhase) {
+				state.logger?.debug("getResponseTriggerAbilities checking for effect instance %s", JSON.stringify(e));
 				for (let event of events) {
+					state.logger?.debug(" - checking against event %s", JSON.stringify(event));
 					if (isTriggerAbilityUseable(state, e.card.owner, e, event)) {
 						return { event: event, effect: e };
 					}
@@ -1318,7 +1327,6 @@ export namespace Match {
 		return applicableTriggerEffects;
 	}
 	export function makePlayersSelectResponseTriggerAbility(state: GameState, events: Array<GameEvent>, resolutionPhase: "before" | "after"): boolean {
-		events = events.filter(e => !e.canceled && !e.responded)
 		events.forEach(event => event.responded = true);
 		
 		let applicableTriggerEffects = getResponseTriggerAbilities(state, events, resolutionPhase);

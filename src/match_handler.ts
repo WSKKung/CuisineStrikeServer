@@ -155,7 +155,7 @@ const matchLoop: nkruntime.MatchLoopFunction = function(ctx, logger, nk, dispatc
 	let gameState: GameState = state.gameState;
 	let presences: PlayerPresences = state.presences;
 	let eventHandler: GameEventHandler = state.eventHandler;
-	gameState.log = logger;
+	gameState.logger = logger;
 	gameState.nk = nk;
 	let idGen = createSequentialIDGenerator();
 	let matchDispatcher = createNakamaMatchDispatcher(dispatcher, presences);
@@ -317,7 +317,7 @@ const matchLoop: nkruntime.MatchLoopFunction = function(ctx, logger, nk, dispatc
 
 			if (currentEventQueue.length > 0) {
 				// pre-resolution trigger response
-				if (Match.makePlayersSelectResponseTriggerAbility(gameState, currentEventQueue.map(e => e.event), "before")) {
+				if (Match.makePlayersSelectResponseTriggerAbility(gameState, currentEventQueue.map(e => e.event).filter(e => !e.responded), "before")) {
 					// hold every event to process later if there is some ability player can select
 					gameState.onHeldEventQueue.push(...currentEventQueue);
 					break;
@@ -371,10 +371,10 @@ const matchLoop: nkruntime.MatchLoopFunction = function(ctx, logger, nk, dispatc
 						remainingPlayers: players.concat()
 					});
 					broadcastMatchSyncReady(gameState, matchDispatcher);
-					// also post-resolution trigger response
-					
-					Match.makePlayersSelectResponseTriggerAbility(gameState, gameState.resolvedEventQueue.map(e => e.event), "after")
 
+					// also post-resolution trigger response
+					//logger.debug("Post-Resolution: %s", JSON.stringify(gameState.resolvedEventQueue.map(e => e.event)))
+					Match.makePlayersSelectResponseTriggerAbility(gameState, gameState.resolvedEventQueue.map(e => e.event), "after")
 					gameState.resolvedEventQueue.splice(0)
 				}
 				// no event to process
