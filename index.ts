@@ -22,8 +22,8 @@ const InitModule: nkruntime.InitModule = function(ctx, logger, nk, initializer) 
 	logger.info("MatchmakerMatched hook registered");
 	logger.info("Typescript Runtime ready, les go, woo!!!");
 	initializer.registerStorageIndex("cards", "cards", undefined, ["name", "type", "description", "class", "grade", "power", "health"], 1000, false);
-	initializer.registerBeforeAuthenticateEmail(beforeAuthenticateLogin);
-	initializer.registerAfterAuthenticateEmail(afterAuthenticateEmail)
+	initializer.registerAfterAuthenticateEmail(afterAuthenticateEmail);
+	initializer.registerAfterAuthenticateDevice(afterAuthenticateDevice);
 	//registerTestRPCs(initializer);
 	// Registers every testing RPC functions into the server
 	initializer.registerRpc("DebugRecipeCheck",recipeCheckRPC);
@@ -98,17 +98,16 @@ const beforeMatchJoin: nkruntime.RtBeforeHookFunction<nkruntime.EnvelopeMatchJoi
 	return envelope;
 }
 
-const beforeAuthenticateLogin: nkruntime.BeforeHookFunction<nkruntime.AuthenticateEmailRequest> = function(ctx, logger, nk, data) {
-	// disconnect other session first
-	//logger.debug("debug before auth: data=%s, ctx=%s", JSON.stringify(data), JSON.stringify(ctx));
-	//let currentUsers = nk.usersGetUsername([ data.username ]);
-	//if (currentUsers.length > 0 && currentUsers[0].online) {
-	//	nk.sessionLogout(currentUsers[0].userId);
-	//}//
-	return data;
+const afterAuthenticateEmail: nkruntime.AfterHookFunction<nkruntime.Session, nkruntime.AuthenticateEmailRequest> = function(ctx, logger, nk, data, request) {
+	let storage = NakamaAdapter.storageAccess({ nk, logger });
+	// give coin to new user
+	if (request.create) {
+		const STARTING_COIN = 1000;
+		storage.givePlayerCoin(ctx.userId, STARTING_COIN);
+	}
 }
 
-const afterAuthenticateEmail: nkruntime.AfterHookFunction<nkruntime.Session, nkruntime.AuthenticateEmailRequest> = function(ctx, logger, nk, data, request) {
+const afterAuthenticateDevice: nkruntime.AfterHookFunction<nkruntime.Session, nkruntime.AuthenticateDeviceRequest> = function(ctx, logger, nk, data, request) {
 	let storage = NakamaAdapter.storageAccess({ nk, logger });
 	// give coin to new user
 	if (request.create) {
