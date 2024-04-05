@@ -7,9 +7,11 @@ import { CardBuffResetCondition } from "../../buff";
 const OVERHEAT_EFFECT: CardEffect = {
 	type: "trigger",
 	resolutionPhase: "after",
+
 	condition({ state, player, card, event }) {
-		return !!event && event.type === "summon" && event.card.owner === Match.getOpponent(state, player);
+		return !!event && event.type === "summon" && Card.getOwner(event.card) !== player;
 	},
+
 	async activate({ state, player, card, event }) {
 		if (!event || event.type !== "summon") return;
 		Match.addBuff(state, { player, reason: EventReason.EFFECT }, [event.card], {
