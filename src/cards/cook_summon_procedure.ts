@@ -61,6 +61,7 @@ export namespace DishSummonProcedure {
 			slots: recipe.slots.map(_ => ([]))
 		})
 		
+		let result = false;
 		// use backtracking technique
 		while (stack.length > 0) {
 			let state = stack.pop()!;
@@ -84,18 +85,18 @@ export namespace DishSummonProcedure {
 			
 			recipe.slots.forEach((slot, slot_index) => {
 				let slot_state = state.slots[slot_index];
-				let next_state: CombinationMatchState = {
-					current_material_index: state.current_material_index + 1,
-					slots: [...state.slots]
-				}
 	
 				// if current material can assign to current slot, try to assign it and check for next material
 				if (slot_state.length < slot.max && checkMaterialMatchingSlot(slot, card, material)) {
+					let next_state: CombinationMatchState = {
+						current_material_index: state.current_material_index + 1,
+						slots: [...state.slots]
+					}
 					next_state.slots[slot_index] = slot_state.concat(material);
+					stack.push(next_state);
 				}
 				// otherwise, check next material and skip current material
-	
-				stack.push(next_state);
+				//stack.push(next_state);
 			});
 	
 		}
