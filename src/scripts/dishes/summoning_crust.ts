@@ -4,10 +4,6 @@ import { Card, CardLocation, CardType } from "../../model/cards";
 import { CardEffect } from "../../model/effect";
 import { EventReason } from "../../model/events";
 
-function getHPCost(card: Card): number {
-	return Card.getGrade(card) * 2
-}
-
 function targetFilter(card: Card, activatedCard: Card): boolean {
 	return Card.hasType(card, CardType.DISH) && Card.getGrade(card) <= Card.getGrade(activatedCard);
 }
@@ -17,9 +13,6 @@ export const SUMMONING_CRUST_EFFECT: CardEffect = {
 	condition({ state, player, card}) {
 		// while being served
 		if (!Card.hasLocation(card, CardLocation.SERVE_ZONE)) return false;
-		// cost requirement for paying hp equal to its grade
-		let payCost = getHPCost(card)
-		if (Match.getHP(state, player) <= payCost) return false;
 		// effect requirement for targeting a unit
 		if (Match.countFilterCards(state, targetCard => targetFilter(targetCard, card), CardLocation.TRASH, player) <= 0) return false;
 		// must have free space to summon target
@@ -28,9 +21,6 @@ export const SUMMONING_CRUST_EFFECT: CardEffect = {
 	},
 
 	async activate({ state, player, card }) {
-		let payAmount = await Match.payHP(state, { player, reason: EventReason.EFFECT | EventReason.COST }, player, getHPCost(card));
-		if (payAmount <= 0) return;
-		
 		let targetChoices = Match.findCards(state, targetCard => targetFilter(targetCard, card), CardLocation.TRASH, player);
 		let targetSelections = await Match.makePlayerSelectCards(state, { player, reason: EventReason.EFFECT }, player, targetChoices, 1, 1);
 

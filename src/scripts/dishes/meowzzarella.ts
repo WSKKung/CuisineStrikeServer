@@ -27,11 +27,12 @@ export const MEOWZARELLA_EFFECT: CardEffect = {
 		let targetSelections = await Match.makePlayerSelectCards(state, { player, reason: EventReason.EFFECT }, player, targetChoices, 1, 1);
 
 		if (targetSelections.length > 0) {
+			let debuffAmount = -Card.getGrade(card);
 			Match.addBuff(state, { player, reason: EventReason.EFFECT }, targetSelections, {
 				id: Match.newUUID(state),
 				type: "power",
 				operation: "add",
-				amount: Card.getGrade(card),
+				amount: debuffAmount,
 				sourceCard: card,
 				resets: CardBuffResetCondition.TARGET_REMOVED | CardBuffResetCondition.END_TURN
 			});

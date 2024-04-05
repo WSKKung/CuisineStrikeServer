@@ -19,7 +19,7 @@ export const PIZZAESTRO_PEPPERONI_EFFECT: CardEffect = {
 		return true;
 	},
 	async activate({ state, player, card}) {
-		let paidHP = await Match.payHP(state, { player, reason: EventReason.EFFECT | EventReason.COST }, player, getHPCost(card));
+		await Match.payHP(state, { player, reason: EventReason.EFFECT | EventReason.COST }, player, getHPCost(card));
 		Match.addBuff(state, { player, reason: EventReason.EFFECT }, [card], {
 			id: Match.newUUID(state),
 			type: "pierce",
@@ -32,7 +32,7 @@ export const PIZZAESTRO_PEPPERONI_EFFECT: CardEffect = {
 		let validTargets = Match.findCards(state, () => true, CardLocation.SERVE_ZONE, Match.getOpponent(state, player));
 		let selectedTargets = await Match.makePlayerSelectCards(state, { player, reason: EventReason.EFFECT }, player, validTargets, 1, 1);
 		if (selectedTargets.length > 0) {
-			let damage = paidHP * 2;
+			let damage = getHPCost(card) * 2;
 			await Match.damage(state, { player, reason: EventReason.EFFECT }, selectedTargets, damage);
 		}
 	},
