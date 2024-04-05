@@ -304,7 +304,7 @@
 							"conditions": [
 								{
 									"type": "check_classes",
-									"classes": 2
+									"classes": 1
 								},
 								{
 									"type": "not",
