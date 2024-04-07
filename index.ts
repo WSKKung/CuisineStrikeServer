@@ -22,6 +22,7 @@ const InitModule: nkruntime.InitModule = function(ctx, logger, nk, initializer) 
 	logger.info("MatchmakerMatched hook registered");
 	logger.info("Typescript Runtime ready, les go, woo!!!");
 	initializer.registerStorageIndex("cards", "cards", undefined, ["name", "type", "description", "class", "grade", "power", "health"], 1000, false);
+
 	initializer.registerAfterAuthenticateEmail(afterAuthenticateEmail);
 	initializer.registerAfterAuthenticateDevice(afterAuthenticateDevice);
 	//registerTestRPCs(initializer);
@@ -101,16 +102,17 @@ const beforeMatchJoin: nkruntime.RtBeforeHookFunction<nkruntime.EnvelopeMatchJoi
 const afterAuthenticateEmail: nkruntime.AfterHookFunction<nkruntime.Session, nkruntime.AuthenticateEmailRequest> = function(ctx, logger, nk, data, request) {
 	let storage = NakamaAdapter.storageAccess({ nk, logger });
 	// give coin to new user
-	if (request.create) {
+	if (data.created) {
 		const STARTING_COIN = 1000;
 		storage.givePlayerCoin(ctx.userId, STARTING_COIN);
 	}
 }
 
 const afterAuthenticateDevice: nkruntime.AfterHookFunction<nkruntime.Session, nkruntime.AuthenticateDeviceRequest> = function(ctx, logger, nk, data, request) {
+	logger.debug("after auth device: data=%s request=%s", JSON.stringify(data), JSON.stringify(request));
 	let storage = NakamaAdapter.storageAccess({ nk, logger });
 	// give coin to new user
-	if (request.create) {
+	if (data.created) {
 		const STARTING_COIN = 1000;
 		storage.givePlayerCoin(ctx.userId, STARTING_COIN);
 	}
