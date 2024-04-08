@@ -252,9 +252,7 @@ export namespace NakamaAdapter {
 						activeIndex: 0
 					}
 					// add cards from starter deck to player collection
-					playerCollection.cards = playerCollection.cards.concat(obtainedDeck.main);
-					playerCollection.cards = playerCollection.cards.concat(obtainedDeck.recipe);
-					this.updatePlayerCardCollections(playerId, playerCollection);
+					this.addCardToPlayerCollection(playerId, obtainedDeck.main.concat(obtainedDeck.recipe));
 					this.updatePlayerDecklist(playerId, newDecklist);
 					return newDecklist;
 				}
