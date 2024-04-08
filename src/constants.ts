@@ -5,8 +5,8 @@ export const GameConfiguration = {
 	initialHP: 30,
 	initialHandSize: 4,
 	playerTimer: {
-		turnTime: 60 * 1000,
-		matchTime: 240 * 1000
+		turnTime: 120 * 1000,
+		matchTime: 360 * 1000
 	},
 	disconnectTimeout: 1 * 1000
 }
