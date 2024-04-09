@@ -61,7 +61,6 @@ export namespace DishSummonProcedure {
 			slots: recipe.slots.map(_ => ([]))
 		})
 		
-		let result = false;
 		// use backtracking technique
 		while (stack.length > 0) {
 			let state = stack.pop()!;
@@ -74,7 +73,8 @@ export namespace DishSummonProcedure {
 			let every_material_used = state.current_material_index >= materials.length;
 	
 			if (every_slot_fullfilled && every_material_used) {
-				return true;
+				let new_combination = state.slots.reduce((a1, a2) => a1.concat(a2), []);
+				if (new_combination.map(mat => Card.getGrade(mat)).reduce((g1,g2) => g1+g2, 0) >= Card.getBaseGrade(card)) return true;
 			}
 			
 			if (every_material_used) {
@@ -152,7 +152,9 @@ export namespace DishSummonProcedure {
 			
 			if (every_slot_fullfilled) {
 				let new_combination = state.slots.reduce((a1, a2) => a1.concat(a2), []);
-				combinations.push(new_combination);
+				if (new_combination.map(mat => Card.getGrade(mat)).reduce((g1,g2) => g1+g2, 0) >= Card.getBaseGrade(card)) {
+					combinations.push(new_combination);
+				}
 			}
 
 			if (every_material_used) {
