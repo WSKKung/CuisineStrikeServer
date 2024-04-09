@@ -54,8 +54,8 @@ type CardPropertiesPacket = {
 	grade?: number,
 	power?: number,
 	health?: number,
-	bonus_power?: number,
-	bonus_health?: number
+	bonusPower?: number,
+	bonusHealth?: number
 }
 
 interface TurnChangePacket {
@@ -86,8 +86,8 @@ function localizeCardProperties(props: CardProperties, isPrivate: boolean): Card
 				grade: props.grade,
 				power: props.power,
 				health: props.health,
-				bonus_power: props.bonusPower,
-				bonus_health: props.bonusHealth
+				bonusPower: props.bonusPower,
+				bonusHealth: props.bonusHealth
 			}
 		}
 }
