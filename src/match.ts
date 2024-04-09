@@ -356,8 +356,7 @@ export namespace Match {
 	}
 
 	export function getRandomPlayer(state: GameState): string {
-		var players = getActivePlayers(state);
-		return players[Math.floor(Math.random() * players.length)]
+		return ArrayUtil.pickRandom(getActivePlayers(state), 1)[0];
 	}
 
 	export function getTurnPlayer(state: GameState): string {
