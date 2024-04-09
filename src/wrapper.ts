@@ -372,7 +372,7 @@ export namespace NakamaAdapter {
 					throw new Error(`Player reaches maximum deck count!`)
 				}
 				deck.valid = validateDeck(deck).valid;
-
+				deck.id = options.nk.uuidv4();
 				decklist.decks.push(deck);
 				this.updatePlayerDecklist(playerId, decklist);
 			},
