@@ -521,65 +521,69 @@ export function broadcastUpdateAvailabeActions(state: GameState, dispatcher: Mat
 	Match.getActivePlayers(state).forEach(playerId => {
 		let actionMap: { [card: CardID]: AvailableCardActionPacket } = {};
 		if (Match.isPlayerTurn(state, playerId)) {
-			// set
-			let potentialSettableCards = Match.findCards(state, (card) => Match.isCardCanSetAsIngredient(state, card), CardLocation.HAND | CardLocation.SERVE_ZONE, playerId);
-			for (let card of potentialSettableCards) {
-				let requiredCost = Card.getIngredientMinimumMaterialCost(card);
-				if (requiredCost >= 0) {
-					let potentialMaterialCount = Match.countCards(state, CardLocation.STANDBY_ZONE, playerId);
-					if (requiredCost <= potentialMaterialCount) {
-						actionMap[card.id] = actionMap[card.id] || { card: card.id };
-						actionMap[card.id].set = { required_material_count: requiredCost, columns: [0,1,2] }
+			if (Match.isSetupPhase(state)) {
+				// set
+				let potentialSettableCards = Match.findCards(state, (card) => Match.isCardCanSetAsIngredient(state, card), CardLocation.HAND | CardLocation.SERVE_ZONE, playerId);
+				for (let card of potentialSettableCards) {
+					let requiredCost = Card.getIngredientMinimumMaterialCost(card);
+					if (requiredCost >= 0) {
+						let potentialMaterialCount = Match.countCards(state, CardLocation.STANDBY_ZONE, playerId);
+						if (requiredCost <= potentialMaterialCount) {
+							actionMap[card.id] = actionMap[card.id] || { card: card.id };
+							actionMap[card.id].set = { required_material_count: requiredCost, columns: [0,1,2] }
+						}
+					}
+					else {
+						let freeColumns = Match.getFreeColumns(state, playerId, CardLocation.STANDBY_ZONE);
+						if (freeColumns.length > 0) {
+							actionMap[card.id] = actionMap[card.id] || { card: card.id };
+							actionMap[card.id].set = { required_material_count: requiredCost, columns: freeColumns }
+						}
 					}
 				}
-				else {
-					let freeColumns = Match.getFreeColumns(state, playerId, CardLocation.STANDBY_ZONE);
-					if (freeColumns.length > 0) {
-						actionMap[card.id] = actionMap[card.id] || { card: card.id };
-						actionMap[card.id].set = { required_material_count: requiredCost, columns: freeColumns }
-					}
-				}
-			}
 
-			// cook summon
-			let potentialCookableCards = Match.findCards(state, (card) =>  Match.isCardCanCookSummon(state, card), CardLocation.RECIPE_DECK, playerId);
-			let potentialCookMaterialCards: Array<Card> = Match.getCards(state, CardLocation.STANDBY_ZONE, playerId);
-			for (let card of potentialCookableCards) {
-				let recipe = Match.getRecipe(state, card);
-				if (!recipe) {
-					continue;
+				// cook summon
+				let potentialCookableCards = Match.findCards(state, (card) =>  Match.isCardCanCookSummon(state, card), CardLocation.RECIPE_DECK, playerId);
+				let potentialCookMaterialCards: Array<Card> = Match.getCards(state, CardLocation.STANDBY_ZONE, playerId);
+				for (let card of potentialCookableCards) {
+					let recipe = Match.getRecipe(state, card);
+					if (!recipe) {
+						continue;
+					}
+					let potentialCombinations: Array<Array<Card>> = DishSummonProcedure.getRecipeValidCombinations(recipe, card, potentialCookMaterialCards);
+					if (potentialCombinations.length > 0) {
+						actionMap[card.id] = actionMap[card.id] || { card: card.id };
+						actionMap[card.id].cook_summon = {
+							material_combinations: potentialCombinations.map(combination => combination.map(card => card.id)),
+							columns: [],
+							can_quick_set: Card.hasType(card, CardType.INGREDIENT),
+							quick_set_columns: []
+						}
+					}
+
 				}
-				let potentialCombinations: Array<Array<Card>> = DishSummonProcedure.getRecipeValidCombinations(recipe, card, potentialCookMaterialCards);
-				if (potentialCombinations.length > 0) {
+
+				// activate
+				let potentialActivateableCards = Match.findCards(state, (card) =>  Match.isCardCanActivateAbility(state, card), CardLocation.HAND | CardLocation.ON_FIELD, playerId);
+				for (let card of potentialActivateableCards) {
 					actionMap[card.id] = actionMap[card.id] || { card: card.id };
-					actionMap[card.id].cook_summon = {
-						material_combinations: potentialCombinations.map(combination => combination.map(card => card.id)),
-						columns: [],
-						can_quick_set: Card.hasType(card, CardType.INGREDIENT),
-						quick_set_columns: []
+					actionMap[card.id].activate = {}
+				}
+			}
+			else {
+				// attack
+				let potentialAttackableCards = Match.findCards(state, (card) =>  Match.isCardCanAttack(state, card), CardLocation.SERVE_ZONE, playerId);
+				let validAttackTargets = Match.getCards(state, CardLocation.SERVE_ZONE, Match.getOpponent(state, playerId));
+				for (let card of potentialAttackableCards) {
+					actionMap[card.id] = actionMap[card.id] || { card: card.id };
+					actionMap[card.id].attack = {
+						can_direct_attack: validAttackTargets.length <= 0,
+						targets: validAttackTargets.map(c => c.id)
 					}
 				}
-
-			}
-
-			// attack
-			let potentialAttackableCards = Match.findCards(state, (card) =>  Match.isCardCanAttack(state, card), CardLocation.SERVE_ZONE, playerId);
-			let validAttackTargets = Match.getCards(state, CardLocation.SERVE_ZONE, Match.getOpponent(state, playerId));
-			for (let card of potentialAttackableCards) {
-				actionMap[card.id] = actionMap[card.id] || { card: card.id };
-				actionMap[card.id].attack = {
-					can_direct_attack: validAttackTargets.length <= 0,
-					targets: validAttackTargets.map(c => c.id)
-				}
-			}
-
-			// activate
-			let potentialActivateableCards = Match.findCards(state, (card) =>  Match.isCardCanActivateAbility(state, card), CardLocation.HAND | CardLocation.ON_FIELD, playerId);
-			for (let card of potentialActivateableCards) {
-				actionMap[card.id] = actionMap[card.id] || { card: card.id };
-				actionMap[card.id].activate = {}
 			}
 		}
+			
 		
 		let packet: AvailableTurnActionPacket = {
 			actions: Object.values(actionMap)
