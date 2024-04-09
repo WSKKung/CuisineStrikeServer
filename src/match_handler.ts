@@ -410,7 +410,8 @@ const matchLoop: nkruntime.MatchLoopFunction = function(ctx, logger, nk, dispatc
 
 	if (gameState.status == "paused" || gameState.status == "running") {
 		for (let player of players) {
-			Match.countdownPlayerTimer(gameState, player, deltaTime);
+			// pause timer for testing only
+			//Match.countdownPlayerTimer(gameState, player, deltaTime);
 		}
 		broadcastMatchSyncTimer(gameState, matchDispatcher);
 	}
