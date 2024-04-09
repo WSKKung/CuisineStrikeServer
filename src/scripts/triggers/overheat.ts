@@ -14,11 +14,12 @@ const OVERHEAT_EFFECT: CardEffect = {
 
 	async activate({ state, player, card, event }) {
 		if (!event || event.type !== "summon") return;
+		let debuffAmount = -Card.getGrade(event.card);
 		Match.addBuff(state, { player, reason: EventReason.EFFECT }, [event.card], {
 			id: Match.newUUID(state),
 			type: "power",
 			operation: "add",
-			amount: Card.getGrade(event.card),
+			amount: debuffAmount,
 			sourceCard: card,
 			resets: CardBuffResetCondition.TARGET_REMOVED
 		});

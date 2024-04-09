@@ -9,7 +9,7 @@ const HEALTH_BUFF_AMOUNT = 1
 export const HIGH_CAESAR_SALADSAINT_EFFECT: CardEffect = {
 	type: "activate",
 	condition({ state, player, card}) {
-		return Match.countFilterCards(state, c => true, CardLocation.SERVE_ZONE, player) > 0;
+		return Match.getHP(state, player) > Match.getHP(state, Match.getOpponent(state, player)) && Match.countFilterCards(state, c => true, CardLocation.SERVE_ZONE, player) > 0;
 	},
 	async activate({ state, player, card}) {
 		let opponent = Match.getOpponent(state, player);
